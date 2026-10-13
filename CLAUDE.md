@@ -52,6 +52,7 @@ O app roda na raiz (local, `:8088`) **ou** num subcaminho (ex.: `https://seudomi
 | `server/migrate.js` | Roda na subida: `getMigrations` do Better Auth + `CREATE TABLE IF NOT EXISTS` das tabelas do app. Também roda isolado (`node migrate.js`). |
 | `server/middleware/requireAuth.js` | Sessão obrigatória; 403 `PASSWORD_CHANGE_REQUIRED` se senha temporária. Popula `req.user`/`req.session`. |
 | `server/routes/api.js` | `/api/health` público; **tudo abaixo de `router.use(requireAuth)`** (busca e stream). |
+| `server/services/lyrics.js` | Letras via LRCLIB (sem chave): `/api/get` exato (com duração) → `/api/search` com pontuação. O `/get` responde **503** quando não acha: tratado como "sem correspondência". Limpa título/canal de faixas da aba YouTube (`kind=video`). Cache 24h (inclusive "não encontrada"). Rota `GET /api/lyrics` (atrás do `requireAuth`). |
 | `server/routes/playlists.js` | CRUD de playlists do usuário logado. |
 | `server/routes/admin.js` | Rotas de admin próprias (cadastro, senha temporária). Checa `req.user.role === 'admin'`. |
 | `server/lib/tempPassword.js` | Gera/aplica/criptografa/lê/limpa senhas temporárias. |
@@ -70,6 +71,7 @@ O app roda na raiz (local, `:8088`) **ou** num subcaminho (ex.: `https://seudomi
 | `client/src/components/AdminView.jsx` | Painel admin (só aparece para `role === 'admin'`). |
 | `client/src/lib/useSortable.js` | Reordenação por arrasto **sem HTML5 drag-and-drop** (não funciona no toque): mouse arrasta a linha; toque = segurar ~350 ms ou arrastar pela alça (`touch-action: none`). `touchmove` não passivo bloqueia a rolagem durante o arrasto; rola sozinho perto das bordas/PlayerBar (`[data-player-bar]`). |
 | `client/src/lib/pwa.js` | Instalação como app: captura `beforeinstallprompt` cedo (store Zustand), detecta iOS/standalone, registra `/sw.js` (só em produção). Botão em `components/InstallButton.jsx` (nav; no iOS mostra instruções). |
+| `client/src/store/lyricsStore.js` + `components/LyricsPanel.jsx` | Letra carregada quando a faixa **começa a tocar** (efeito no `PlayerBar`). Painel em tela cheia atrás da PlayerBar: linha atual destacada (LRC), clique numa linha faz seek; rolagem automática pausa 4 s após rolagem manual. O painel **abre sozinho** a cada faixa nova que começa a tocar; pausar/retomar não o reabre. |
 | `client/src/store/playlistStore.js` | Playlists vindas do servidor, atualização otimista; em erro, **recarrega do servidor** (não restaura snapshot, por causa de corridas). Importa `localStorage['sound:playlists']` legado no 1º login. |
 
 ## PWA (instalável no celular)

@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
+import { useLyricsStore } from '../store/lyricsStore';
 import { formatTime, SOURCE_LABEL } from '../lib/format';
 import Artwork from './Artwork';
 import Visualizer from './Visualizer';
-import { PlayIcon, PauseIcon, NextIcon, PrevIcon, VolumeIcon, Spinner } from './Icons';
+import LyricsPanel from './LyricsPanel';
+import { PlayIcon, PauseIcon, NextIcon, PrevIcon, VolumeIcon, LyricsIcon, Spinner } from './Icons';
 
 function Seekbar() {
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -89,6 +91,24 @@ function Notice() {
   );
 }
 
+function LyricsButton({ track }) {
+  const open = useLyricsStore((s) => s.open);
+  const setOpen = useLyricsStore((s) => s.setOpen);
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      disabled={!track}
+      aria-pressed={open}
+      className={`transition disabled:opacity-30 ${open ? 'text-accent' : 'text-zinc-400 hover:text-white'}`}
+      aria-label={open ? 'Fechar letra' : 'Mostrar letra'}
+      title="Letra"
+    >
+      <LyricsIcon />
+    </button>
+  );
+}
+
 export default function PlayerBar() {
   const track = usePlayerStore(selectCurrentTrack);
   const status = usePlayerStore((s) => s.status);
@@ -99,7 +119,14 @@ export default function PlayerBar() {
   const playing = status === 'playing';
   const hasNext = index >= 0 && index < queueLength - 1;
 
+  // A letra é buscada quando a faixa de fato começa a tocar (não a cada troca rápida de faixa).
+  useEffect(() => {
+    if (playing && track) useLyricsStore.getState().load(track);
+  }, [playing, track]);
+
   return (
+    <>
+    <LyricsPanel />
     <footer data-player-bar className="fixed inset-x-0 bottom-0 z-20 border-t border-surface-600 bg-surface-800/95 backdrop-blur">
       <Notice />
       <div className="mx-auto grid h-20 max-w-screen-2xl grid-cols-[1fr_auto] items-center gap-4 px-4 md:grid-cols-[1fr_2fr_1fr]">
@@ -139,6 +166,9 @@ export default function PlayerBar() {
             <button type="button" onClick={next} disabled={!hasNext} className="text-zinc-400 transition hover:text-white disabled:opacity-30" aria-label="Próxima">
               <NextIcon />
             </button>
+            <span className="md:hidden">
+              <LyricsButton track={track} />
+            </span>
           </div>
           <div className="hidden w-full md:block">
             <Seekbar />
@@ -148,6 +178,7 @@ export default function PlayerBar() {
         {/* Visualizador + volume */}
         <div className="hidden items-center justify-end gap-4 md:flex">
           <Visualizer className="hidden h-10 w-32 lg:block" />
+          <LyricsButton track={track} />
           <Volume />
         </div>
       </div>
@@ -155,5 +186,6 @@ export default function PlayerBar() {
         <Seekbar />
       </div>
     </footer>
+    </>
   );
 }

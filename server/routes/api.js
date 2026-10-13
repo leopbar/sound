@@ -1,6 +1,7 @@
 const express = require('express');
 const musicService = require('../services/musicService');
 const streamService = require('../services/streamService');
+const lyricsService = require('../services/lyrics');
 const { rateLimit } = require('../middleware/throttle');
 const { requireAuth } = require('../middleware/requireAuth');
 const { HttpError } = require('../lib/errors');
@@ -36,6 +37,23 @@ router.get('/search', rateLimit({ windowMs: 60_000, max: 30 }), searchRoute(musi
 
 // Vídeos na ordem do próprio YouTube (aba "YouTube").
 router.get('/search/youtube', rateLimit({ windowMs: 60_000, max: 30 }), searchRoute(musicService.searchYouTube));
+
+// Letra da faixa que está tocando (LRCLIB).
+router.get('/lyrics', rateLimit({ windowMs: 60_000, max: 60 }), wrap(async (req, res) => {
+  const str = (v, max) => String(v || '').trim().slice(0, max);
+  const title = str(req.query.title, 300);
+  const artist = str(req.query.artist, 200);
+  if (!title || !artist) throw new HttpError(400, 'MISSING_TRACK', 'Informe "title" e "artist".');
+  const duration = Number(req.query.duration);
+  const lyrics = await lyricsService.getLyrics({
+    title,
+    artist,
+    album: str(req.query.album, 300) || null,
+    duration: Number.isFinite(duration) && duration > 0 && duration < 7200 ? duration : null,
+    kind: req.query.kind === 'video' ? 'video' : null,
+  });
+  res.set('Cache-Control', 'private, max-age=3600').json(lyrics);
+}));
 
 const streamLimit = rateLimit({ windowMs: 60_000, max: 240 }); // seeks geram várias requisições
 

@@ -32,6 +32,15 @@ export const searchTracks = (query, { signal } = {}) => getResults('/api/search'
 /** Vídeos na ordem do próprio YouTube. */
 export const searchVideos = (query, { signal } = {}) => getResults('/api/search/youtube', query, signal);
 
+/** Letra (LRCLIB) da faixa: { found, instrumental, synced: [{ time, text }] | null, plain }. */
+export function getLyrics(track, { signal } = {}) {
+  const params = new URLSearchParams({ title: track.title || '', artist: track.artist || '' });
+  if (track.album) params.set('album', track.album);
+  if (track.duration) params.set('duration', String(Math.round(track.duration)));
+  if (track.kind === 'video') params.set('kind', 'video');
+  return request(`/api/lyrics?${params}`, { signal });
+}
+
 /* ---------------------------- playlists ---------------------------- */
 
 const pl = (id) => `/api/playlists/${encodeURIComponent(id)}`;

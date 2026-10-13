@@ -60,6 +60,16 @@ export const ShareIcon = (p) => (
     <path d="M12 3v12M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1" />
   </svg>
 );
+export const LyricsIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M4 6h10M4 11h10M4 16h6" /><path d="M18 17V5l3-1" /><circle cx="16" cy="17" r="2" />
+  </svg>
+);
+export const CloseIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
 export const Spinner =({ className = '' }) => (
   <svg className={`animate-spin ${className}`} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
     <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity=".25" strokeWidth="3" />
