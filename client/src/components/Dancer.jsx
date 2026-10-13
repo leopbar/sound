@@ -3,7 +3,7 @@ import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { useDancerStore } from '../store/dancerStore';
 import { engine } from '../lib/audioEngine';
 import { BeatTracker } from '../lib/beatTracker';
-import { getBeatGrid } from '../lib/beatGrid';
+import { getBeatGrid, cancelBeatGrid } from '../lib/beatGrid';
 import { DANCERS } from './dancers';
 
 const TAU = Math.PI * 2;
@@ -97,22 +97,51 @@ export default function Dancer({ className = 'items-center' }) {
   const gridRef = useRef(null); // { id, grid }
   trackerRef.current ||= new BeatTracker();
 
-  // A cada faixa: sorteia o personagem e calcula a grade de batidas da música inteira.
+  // A cada faixa: sorteia o personagem e volta à detecção ao vivo até a grade ficar pronta.
   useEffect(() => {
     useDancerStore.getState().pick(track?.id);
     trackerRef.current.reset();
     gridRef.current = null;
-    if (!track) return;
-    const controller = new AbortController();
-    getBeatGrid(track, { signal: controller.signal })
-      .then((grid) => {
-        if (grid) gridRef.current = { id: track.id, grid };
-      })
-      .catch(() => {
-        /* sem grade: segue com a detecção ao vivo */
-      });
-    return () => controller.abort();
   }, [track?.id]);
+
+  // Grade de batidas da música inteira: exige baixar a faixa de novo. Só começa depois que ela
+  // está tocando e o <audio> já baixou o arquivo (ou após 10 s), para não disputar a rede (4G)
+  // com o áudio na hora de começar.
+  useEffect(() => {
+    if (!track || !playing || gridRef.current?.id === track.id) return;
+    const a = engine.audio;
+    let timer;
+    const stop = () => {
+      clearTimeout(timer);
+      a.removeEventListener('progress', onProgress);
+    };
+    const start = () => {
+      stop();
+      getBeatGrid(track)
+        .then((grid) => {
+          if (grid) gridRef.current = { id: track.id, grid };
+        })
+        .catch(() => {
+          /* sem grade: segue com a detecção ao vivo */
+        });
+    };
+    const downloaded = () => a.duration > 0 && a.buffered.length > 0 && a.buffered.end(a.buffered.length - 1) >= a.duration - 1;
+    function onProgress() {
+      if (downloaded()) start();
+    }
+    if (downloaded()) {
+      start();
+      return undefined;
+    }
+    a.addEventListener('progress', onProgress);
+    timer = setTimeout(start, 10_000);
+    return stop;
+  }, [track?.id, playing]);
+
+  // Desmontou porque o dançarino foi desligado (não por troca de layout): para o download.
+  useEffect(() => () => {
+    if (!useDancerStore.getState().on) cancelBeatGrid();
+  }, []);
 
   useEffect(() => {
     const el = rootRef.current;

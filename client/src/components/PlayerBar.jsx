@@ -172,19 +172,19 @@ export default function PlayerBar() {
         {/* Controles + seekbar */}
         <div className="flex flex-col items-center gap-1">
           <div className="flex items-center gap-5">
-            <button type="button" onClick={prev} disabled={!track} className="text-zinc-400 transition hover:text-white disabled:opacity-30" aria-label="Anterior">
+            <button type="button" onClick={() => prev()} disabled={!track} className="text-zinc-400 transition hover:text-white disabled:opacity-30" aria-label="Anterior">
               <PrevIcon />
             </button>
             <button
               type="button"
-              onClick={toggle}
+              onClick={() => toggle()}
               disabled={!track && !queueLength}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105 disabled:opacity-30"
               aria-label={playing ? 'Pausar' : 'Tocar'}
             >
-              {status === 'loading' ? <Spinner /> : playing ? <PauseIcon /> : <PlayIcon className="translate-x-px" />}
+              {status === 'loading' || status === 'offline' ? <Spinner /> : playing ? <PauseIcon /> : <PlayIcon className="translate-x-px" />}
             </button>
-            <button type="button" onClick={next} disabled={!hasNext} className="text-zinc-400 transition hover:text-white disabled:opacity-30" aria-label="Próxima">
+            <button type="button" onClick={() => next()} disabled={!hasNext} className="text-zinc-400 transition hover:text-white disabled:opacity-30" aria-label="Próxima">
               <NextIcon />
             </button>
             <span className="flex items-center gap-5 md:hidden">

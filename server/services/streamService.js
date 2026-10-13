@@ -80,6 +80,18 @@ const FATAL = new Set(['VIDEO_PRIVATE', 'VIDEO_REMOVED', 'REGION_BLOCKED', 'COPY
 let ytdlBrokenUntil = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * O axios usa o follow-redirects, que deixa no socket um timeout de inatividade que o destrói
+ * mesmo depois de a resposta chegar. Quando o <audio> para de ler (buffer cheio, tela bloqueada),
+ * a origem fica parada e a conexão cairia no meio da música. O `timeout` continua valendo até a
+ * resposta; daí em diante, sem limite.
+ */
+function keepOpen(response) {
+  response.request?.socket?.setTimeout(0);
+  return response;
+}
+
 const MAX_AVAILABILITY_WAIT_MS = 10_000;
 const AVAILABILITY_GRACE_MS = 3000;
 
@@ -177,11 +189,13 @@ async function streamYouTube(videoId, req, res, retry = true) {
   } else {
     // URL direta do googlevideo: sempre pedimos um intervalo explícito (evita throttling).
     const fetchUpstream = () =>
-      axios.get(entry.url, {
-        responseType: 'stream',
-        timeout: 15_000,
-        headers: { ...entry.headers, ...(size ? { Range: `bytes=${start}-${end}` } : {}) },
-      });
+      axios
+        .get(entry.url, {
+          responseType: 'stream',
+          timeout: 15_000,
+          headers: { ...entry.headers, ...(size ? { Range: `bytes=${start}-${end}` } : {}) },
+        })
+        .then(keepOpen);
     try {
       await waitUntilAvailable(entry);
       try {
@@ -226,6 +240,7 @@ async function proxyRemote(url, req, res, sourceLabel) {
       headers: req.headers.range ? { Range: req.headers.range } : {},
       validateStatus: (s) => s === 200 || s === 206 || s === 416,
     });
+    keepOpen(upstream);
   } catch (err) {
     throw new HttpError(502, 'STREAM_FAILED', `Falha ao obter o áudio de ${sourceLabel}.`, {
       reason: err.message,
@@ -238,7 +253,7 @@ async function proxyRemote(url, req, res, sourceLabel) {
     if (upstream.headers[h]) res.setHeader(h, upstream.headers[h]);
   }
   res.setHeader('X-Audio-Source', sourceLabel);
-  return pipeWithErrors(upstream.data, req, res, url);
+  return pipeWithErrors(upstream.data, req, res, sourceLabel); // sem a URL: pode conter a chave da API
 }
 
 async function streamJamendo(trackId, req, res) {
@@ -267,12 +282,15 @@ function pipeWithErrors(stream, req, res, id, onError) {
     req.on('close', cleanup); // cliente fechou/seek: aborta o download upstream
 
     stream.on('error', (err) => {
-      onError?.();
       if (!res.headersSent) {
+        // Falhou antes de começar (URL expirada/negada): re-resolve na próxima. Queda no meio do
+        // download não invalida a URL; o navegador retoma com Range e reaproveita o cache.
+        onError?.();
         const e = toStreamError(err, id);
         ['Content-Range', 'Accept-Ranges', 'Content-Length'].forEach((h) => res.removeHeader(h));
         res.status(e.status).json({ error: e.code, message: e.message, ...e.details });
       } else {
+        console.warn(`[stream] conexão com a origem caiu no meio (${id}): ${err.message}`);
         res.destroy(err);
       }
       resolve();

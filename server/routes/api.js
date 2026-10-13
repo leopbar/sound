@@ -74,6 +74,43 @@ router.post(
   })
 );
 
+// Diário do player no aparelho (pausas e o motivo, erros, quedas de rede, retomadas). Só vai para o
+// log do servidor (`[client]`), para diagnosticar problemas de reprodução no celular.
+const CLIENT_EVENTS = new Set([
+  'boot', 'pause', 'error', 'retry', 'resumed', 'gaveup', 'skip', 'stall',
+  'offline', 'online', 'hidden', 'visible', 'next', 'prev', 'ended', 'blocked',
+]);
+const logValue = (v) => String(v).replace(/[^\w.:-]/g, '_').slice(0, 40);
+// O aparelho reenvia quando a resposta se perde (queda de rede, página fechando): descarta repetidos.
+const seenClientEvents = new Set();
+
+router.post(
+  '/client-log',
+  rateLimit({ windowMs: 60_000, max: 20 }),
+  express.json({ limit: '32kb' }),
+  (req, res) => {
+    const events = req.body?.events;
+    if (!Array.isArray(events) || events.length > 100) {
+      throw new HttpError(400, 'INVALID_EVENTS', 'Envie "events" (lista de até 100 eventos).');
+    }
+    const user = req.user.id.slice(0, 8);
+    for (const e of events) {
+      if (!e || typeof e !== 'object' || !CLIENT_EVENTS.has(e.type)) continue;
+      const key = `${req.user.id}:${e.at}:${e.type}`;
+      if (seenClientEvents.has(key)) continue;
+      seenClientEvents.add(key);
+      if (seenClientEvents.size > 5000) seenClientEvents.delete(seenClientEvents.values().next().value);
+      const at = Number.isFinite(e.at) && Math.abs(Date.now() - e.at) < 30 * 86_400_000 ? new Date(e.at).toISOString() : '?';
+      const fields = Object.entries(e)
+        .filter(([k, v]) => k !== 'type' && k !== 'at' && /^[a-z]{1,10}$/i.test(k) && ['string', 'number'].includes(typeof v))
+        .slice(0, 10)
+        .map(([k, v]) => `${k}=${logValue(v)}`);
+      console.log(`[client] u=${user} ${at} ${e.type} ${fields.join(' ')}`);
+    }
+    res.status(204).end();
+  }
+);
+
 const streamLimit = rateLimit({ windowMs: 60_000, max: 240 }); // seeks geram várias requisições
 
 // Rotas específicas antes da rota genérica do YouTube.

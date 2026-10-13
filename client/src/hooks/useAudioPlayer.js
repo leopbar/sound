@@ -1,15 +1,21 @@
 import { useEffect } from 'react';
 import { engine } from '../lib/audioEngine';
 import { appPath } from '../lib/base';
-import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
+import { logEvent } from '../lib/playerLog';
+import { usePlayerStore, selectCurrentTrack, watchStall, stopStallWatch, takePauseIntent } from '../store/playerStore';
 
 /**
- * Conecta o <audio> (engine) ao store: eventos de mídia -> estado React,
- * fim da faixa -> próxima, erros -> fallback, Media Session e atalhos de teclado.
- * Deve ser montado uma única vez (no App).
+ * Conecta o <audio> (engine) ao store: eventos de mídia -> estado React, fim da faixa -> próxima,
+ * erros -> recuperação/fallback, Media Session e atalhos de teclado. Restaura a fila salva do
+ * usuário. Deve ser montado uma única vez (no Player).
  */
-export function useAudioPlayer() {
+export function useAudioPlayer(userId) {
   const track = usePlayerStore(selectCurrentTrack);
+  const lockSkip = usePlayerStore((s) => s.lockSkip);
+
+  useEffect(() => {
+    usePlayerStore.getState().init(userId);
+  }, [userId]);
 
   useEffect(() => {
     const a = engine.audio;
@@ -28,32 +34,42 @@ export function useAudioPlayer() {
     };
 
     const handlers = {
-      loadstart: () => store.setState({ status: 'loading' }),
-      waiting: () => store.setState({ status: 'loading' }),
+      waiting: () => {
+        store.setState({ status: 'loading' });
+        watchStall();
+      },
       playing: () => {
-        store.setState({ status: 'playing' });
+        store.getState().onPlaying();
         if (ms) ms.playbackState = 'playing';
         syncPosition();
       },
       pause: () => {
-        store.setState({ status: a.ended ? 'idle' : 'paused' });
+        stopStallWatch();
+        const s = store.getState();
+        // Pausa que não veio do app nem da tela de bloqueio: sistema (fone desconectado, ligação,
+        // outro app tocando, economia de bateria...). Fica no diário para diagnóstico.
+        if (!takePauseIntent() && !a.ended) {
+          logEvent('pause', { reason: 'system', id: selectCurrentTrack(s)?.id, pos: Math.round(a.currentTime) });
+        }
+        if (s.status !== 'offline') store.setState({ status: a.ended ? 'idle' : 'paused' });
         if (ms) ms.playbackState = 'paused';
         syncPosition();
+        s.savePosition(true);
       },
       seeked: syncPosition,
       durationchange: () => {
         if (Number.isFinite(a.duration)) store.setState({ duration: a.duration });
         syncPosition();
       },
-      timeupdate: () => store.setState({ currentTime: a.currentTime }),
+      timeupdate: () => {
+        if (a.readyState === 0) return; // troca de src zera o tempo antes de carregar
+        store.setState({ currentTime: a.currentTime });
+        store.getState().savePosition();
+      },
       progress: () => {
         if (a.buffered.length) store.setState({ buffered: a.buffered.end(a.buffered.length - 1) });
       },
-      ended: () => {
-        const { index, queue, next } = store.getState();
-        if (index < queue.length - 1) next();
-        else store.setState({ status: 'idle' });
-      },
+      ended: () => store.getState().onEnded(),
       error: () => {
         // Ignora erros de um src vazio (ex.: após reset).
         if (!a.currentSrc) return;
@@ -61,16 +77,32 @@ export function useAudioPlayer() {
       },
     };
 
+    // Tela bloqueada / app em segundo plano: guarda a posição e registra no diário.
+    const onVisibility = () => {
+      const s = store.getState();
+      const current = selectCurrentTrack(s);
+      if (!current) return;
+      logEvent(document.visibilityState === 'hidden' ? 'hidden' : 'visible', { st: s.status, pos: Math.round(s.currentTime) });
+      if (document.visibilityState === 'hidden') s.savePosition(true);
+    };
+    const onPageHide = () => store.getState().savePosition(true);
+
     for (const [evt, fn] of Object.entries(handlers)) a.addEventListener(evt, fn);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
     return () => {
       for (const [evt, fn] of Object.entries(handlers)) a.removeEventListener(evt, fn);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
     };
   }, []);
 
-  // Media Session: teclas de mídia do teclado/fones e controles na tela de bloqueio.
+  // Media Session: controles na tela de bloqueio/notificação, fone Bluetooth e teclas de mídia.
+  // Pular faixa e arrastar a barra só com a opção ligada (Conta → Reprodução): esbarrões no bolso
+  // trocavam de música. O Android usa as mesmas ações para a tela de bloqueio e para o fone.
   useEffect(() => {
     if (!('mediaSession' in navigator) || !track) return;
-    const { toggle, next, prev, seek } = usePlayerStore.getState();
+    const { play, pause, next, prev, seek } = usePlayerStore.getState();
     navigator.mediaSession.metadata = new window.MediaMetadata({
       title: track.title,
       artist: track.artist,
@@ -80,11 +112,11 @@ export function useAudioPlayer() {
         : [{ src: appPath('icons/icon-512.png'), sizes: '512x512', type: 'image/png' }],
     });
     const actions = {
-      play: toggle,
-      pause: toggle,
-      nexttrack: next,
-      previoustrack: prev,
-      seekto: (d) => seek(d.seekTime),
+      play: () => play(),
+      pause: () => pause('lockscreen'),
+      nexttrack: lockSkip ? () => next('lockscreen') : null,
+      previoustrack: lockSkip ? () => prev('lockscreen') : null,
+      seekto: lockSkip ? (d) => seek(d.seekTime) : null,
     };
     for (const [k, fn] of Object.entries(actions)) {
       try {
@@ -93,7 +125,7 @@ export function useAudioPlayer() {
         /* ação não suportada */
       }
     }
-  }, [track]);
+  }, [track, lockSkip]);
 
   // Atalhos: espaço (play/pause), Shift+←/→ (anterior/próxima), ←/→ (±5s).
   useEffect(() => {

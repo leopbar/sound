@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { authClient, authErrorMessage } from '../lib/authClient';
 import { Spinner } from './Icons';
 import { APP_BASE } from '../lib/base';
+import { usePlayerStore, forgetPlayerState } from '../store/playerStore';
 
 const input =
   'w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 outline-none transition focus:border-accent focus:ring-1 focus:ring-accent';
@@ -244,7 +245,7 @@ function Sessions({ currentSessionId }) {
   );
 }
 
-function DeleteAccount({ hasPassword }) {
+function DeleteAccount({ hasPassword, userId }) {
   const [password, setPassword] = useState('');
   const [state, run] = useAction();
   return (
@@ -255,6 +256,7 @@ function DeleteAccount({ hasPassword }) {
           if (!window.confirm('Excluir sua conta e todas as playlists definitivamente?')) return;
           run(async () => {
             unwrap(await authClient.deleteUser(hasPassword ? { password } : {}));
+            forgetPlayerState(userId);
             window.location.assign(APP_BASE);
           });
         }}
@@ -267,6 +269,23 @@ function DeleteAccount({ hasPassword }) {
           Excluir minha conta
         </button>
       </form>
+    </Section>
+  );
+}
+
+/** Preferências do player neste aparelho. */
+function Playback() {
+  const lockSkip = usePlayerStore((s) => s.lockSkip);
+  const setLockSkip = usePlayerStore((s) => s.setLockSkip);
+  return (
+    <Section
+      title="Reprodução"
+      description="Vale só para este aparelho. No celular, a tela de bloqueio e os botões do fone Bluetooth usam os mesmos comandos: desligado, os dois só dão play/pause (evita trocar de música sem querer com o celular no bolso)."
+    >
+      <label className="flex cursor-pointer items-center justify-between gap-4 text-sm">
+        <span>Pular faixas e arrastar a música pela tela de bloqueio e pelo fone</span>
+        <input type="checkbox" checked={lockSkip} onChange={(e) => setLockSkip(e.target.checked)} className="h-5 w-5 shrink-0 accent-accent" />
+      </label>
     </Section>
   );
 }
@@ -290,6 +309,7 @@ export default function AccountView({ session, config }) {
           type="button"
           onClick={async () => {
             await authClient.signOut();
+            forgetPlayerState(session.user.id); // fila e posição salvas neste aparelho
             window.location.assign(APP_BASE); // limpa player, filas e playlists da memória
           }}
           className={secondary}
@@ -298,10 +318,11 @@ export default function AccountView({ session, config }) {
         </button>
       </div>
       <Profile user={session.user} emailVerification={config.emailVerification} />
+      <Playback />
       <Passkeys />
       {hasPassword && <ChangePassword />}
       <Sessions currentSessionId={session.session.id} />
-      {hasPassword !== null && <DeleteAccount hasPassword={hasPassword} />}
+      {hasPassword !== null && <DeleteAccount hasPassword={hasPassword} userId={session.user.id} />}
     </div>
   );
 }

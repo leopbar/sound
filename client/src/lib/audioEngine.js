@@ -7,6 +7,7 @@ class AudioEngine {
     this.audio = new Audio();
     this.audio.preload = 'auto';
     this.audio.crossOrigin = 'anonymous'; // necessário para o AnalyserNode ler amostras
+    this.url = ''; // URL carregada (sem o fragmento de tempo)
     this.ctx = null;
     this.analyser = null;
     this.beatAnalyser = null;
@@ -35,9 +36,16 @@ class AudioEngine {
     this.analyser.connect(this.ctx.destination);
   }
 
-  load(src) {
-    this.audio.src = src;
+  /** Carrega a faixa; `startAt` (s) começa dali (fragmento de mídia `#t=`, o navegador pede o Range certo). */
+  load(src, startAt = 0) {
+    this.url = src;
+    this.audio.src = startAt > 0.5 ? `${src}#t=${startAt.toFixed(1)}` : src;
     this.audio.load();
+  }
+
+  /** O <audio> está com esta faixa e em condições de tocar (sem erro)? */
+  isReady(src) {
+    return this.url === src && !this.audio.error;
   }
 
   async play() {

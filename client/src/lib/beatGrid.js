@@ -85,11 +85,14 @@ async function decodeMono(buffer) {
   return out;
 }
 
+let active = null; // { id, controller }: análise em andamento (uma faixa por vez)
+
 /**
  * Devolve `{ beats: Float32Array (s), bpm, downbeat }` ou null se não der para analisar.
- * Abortar o `signal` cancela o download (ex.: o usuário pulou a faixa).
+ * O download segue mesmo se o dançarino for remontado (troca de layout do painel); só é
+ * cancelado quando outra faixa é pedida ou por `cancelBeatGrid()`.
  */
-export function getBeatGrid(track, { signal } = {}) {
+export function getBeatGrid(track) {
   if (!track?.id || !track.streamUrl || track.duration > MAX_DURATION_S) return Promise.resolve(null);
   const hit = memory.get(track.id) || load(track.id);
   if (hit) {
@@ -97,11 +100,23 @@ export function getBeatGrid(track, { signal } = {}) {
     return Promise.resolve(hit);
   }
   if (inflight.has(track.id)) return inflight.get(track.id);
-  const forget = () => inflight.get(track.id) === p && inflight.delete(track.id);
-  const p = analyze(track, signal).finally(forget);
+  cancelBeatGrid();
+  const controller = new AbortController();
+  active = { id: track.id, controller };
+  const p = analyze(track, controller.signal).finally(() => {
+    if (inflight.get(track.id) === p) inflight.delete(track.id);
+    if (active?.controller === controller) active = null;
+  });
   inflight.set(track.id, p);
-  signal?.addEventListener('abort', forget, { once: true });
   return p;
+}
+
+/** Cancela a análise em andamento (dançarino desligado ou outra faixa). */
+export function cancelBeatGrid() {
+  if (!active) return;
+  active.controller.abort();
+  inflight.delete(active.id);
+  active = null;
 }
 
 async function analyze(track, signal) {

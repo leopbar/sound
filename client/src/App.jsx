@@ -42,7 +42,7 @@ export default function App() {
 }
 
 function Player({ session, config }) {
-  useAudioPlayer();
+  useAudioPlayer(session.user.id);
   const hasSearched = useSearchStore((s) => s.searched);
   const [view, setView] = useState('search'); // search | playlists | admin | account
   const isAdmin = session.user.role === 'admin';

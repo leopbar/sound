@@ -77,20 +77,36 @@ export function streamUrl(track) {
 }
 
 /**
- * O <audio> não expõe o corpo de respostas de erro. Quando a reprodução falha,
- * sondamos a rota para ler o JSON explicativo devolvido pelo backend (status 502).
+ * O <audio> não diz por que falhou. Sondamos a rota para separar "sem rede / instável" (a faixa
+ * está boa: tentar de novo e retomar) de "faixa com defeito" (o backend explica num JSON 502).
+ * Devolve { kind: 'ok' | 'network' | 'auth' | 'failed', message? }.
  */
-export async function probeStreamError(track) {
+export async function probeStream(track) {
+  let res;
   try {
-    const res = await fetch(streamUrl(track), { headers: { Range: 'bytes=0-1' }, credentials: 'include' });
-    checkAuth(res);
-    if (res.ok) {
-      res.body?.cancel();
-      return null;
-    }
-    const body = await res.json().catch(() => ({}));
-    return body.message || `Erro ${res.status}`;
+    res = await fetch(streamUrl(track), {
+      headers: { Range: 'bytes=0-1' },
+      credentials: 'include',
+      signal: AbortSignal.timeout(45_000), // o servidor pode levar ~20 s para resolver um vídeo novo
+    });
   } catch {
-    return null;
+    return { kind: 'network' };
   }
+  checkAuth(res);
+  if (res.ok) {
+    res.body?.cancel();
+    return { kind: 'ok' };
+  }
+  if (res.status === 401 || res.status === 403) return { kind: 'auth' };
+  const body = res.status === 429 ? null : await res.json().catch(() => null);
+  // Sem JSON nosso (gateway, limite de requisições): problema passageiro, não da faixa.
+  if (!body?.error) return { kind: 'network' };
+  return { kind: 'failed', message: body.message || `Erro ${res.status}` };
+}
+
+/** Faz o servidor resolver a fonte da faixa com antecedência (fica em cache por horas). */
+export function warmStream(track) {
+  fetch(streamUrl(track), { headers: { Range: 'bytes=0-1' }, credentials: 'include', signal: AbortSignal.timeout(60_000) })
+    .then((res) => res.body?.cancel())
+    .catch(() => {});
 }
