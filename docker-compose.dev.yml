@@ -1,0 +1,37 @@
+# Desenvolvimento com hot reload: http://localhost:5173
+#   docker compose -f docker-compose.dev.yml up
+services:
+  server:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: 4000
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - ./server:/app
+      - server_modules:/app/node_modules
+    ports:
+      - "4000:4000"
+
+  client:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      VITE_API_PROXY: http://server:4000
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./client:/app
+      - client_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+
+volumes:
+  server_modules:
+  client_modules:
