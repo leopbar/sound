@@ -169,7 +169,13 @@ O app roda na raiz (local, `:8088`) **ou** num subcaminho (ex.: `https://seudomi
   `http://localhost:5173`).
 - **Produção**: num subcaminho, atrás de um nginx já existente no servidor (ver README), com
   `SIGNUP_ENABLED=false` (contas novas só pelo painel Admin). Os detalhes operacionais (servidor,
-  caminhos, portas, como atualizar) ficam **fora do repositório**, na memória local da sessão.
+  caminhos, portas) ficam **fora do repositório**, na memória local da sessão.
+- **CI/CD** (`.github/workflows/deploy.yml`): push na `main` → job `build` (vite build com
+  `BASE_PATH`, `node --check` do servidor) → job `deploy` (SSH com chave exclusiva, presa por
+  `restrict,command=` ao `scripts/deploy.sh` do clone no servidor). O script só aceita SHA que
+  esteja em `origin/main`, nunca volta versão, usa lock, roda `docker compose up -d --build --wait`
+  e confere `{base}/api/health` pelo nginx. **O log do Actions é público**: o script não imprime
+  caminhos nem `docker compose logs`. Host/usuário/chave/known_hosts ficam em secrets `DEPLOY_*`.
 - **Este repositório é PÚBLICO.** Nunca versione IP/host de servidor, caminhos ou portas internas
   de produção, e-mails ou outros dados pessoais, nem segredos. Confira o diff antes de commitar.
 - O servidor de produção hospeda outros sistemas: não mexa em nada que não seja do Sound.

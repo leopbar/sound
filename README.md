@@ -77,6 +77,23 @@ location /sound/ {
 
 Atualizar: copie o código para o servidor e rode `docker compose up -d --build` na pasta dele.
 
+### Deploy automático (GitHub Actions)
+
+`.github/workflows/deploy.yml` valida o build a cada push/PR e, na `main`, entra no servidor por
+SSH e roda `scripts/deploy.sh` (atualiza o clone para o commit do push, reconstrói com
+`docker compose up -d --build --wait` e confere o `/api/health`). Para configurar:
+
+1. No servidor, a pasta do app precisa ser um clone do repositório (`.env` e `secrets/` ficam fora do git).
+2. Gere uma chave só para o deploy (`ssh-keygen -t ed25519 -N "" -f deploy_key`) e adicione a
+   pública ao `authorized_keys` **presa ao script** — ela não abre shell:
+   ```
+   restrict,command="/caminho/do/app/scripts/deploy.sh" ssh-ed25519 AAAA… github-actions-deploy
+   ```
+3. Secrets do repositório: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PORT` (opcional),
+   `DEPLOY_SSH_KEY` (privada) e `DEPLOY_KNOWN_HOSTS` (`ssh-keyscan -H <host>`).
+
+Deploy manual no servidor: `./scripts/deploy.sh` (última `main`) ou `./scripts/deploy.sh <sha>`.
+
 ## Autenticação
 
 [Better Auth](https://www.better-auth.com), self-hosted no próprio backend (nenhum serviço externo, nenhum custo por usuário):

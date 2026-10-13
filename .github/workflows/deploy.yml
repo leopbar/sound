@@ -1,0 +1,81 @@
+# CI/CD: a cada push na main, valida o build e faz o deploy no servidor via SSH.
+#
+# Secrets do repositório (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST         host/IP do servidor
+#   DEPLOY_USER         usuário SSH
+#   DEPLOY_PORT         porta SSH (opcional, padrão 22)
+#   DEPLOY_SSH_KEY      chave privada exclusiva do deploy
+#   DEPLOY_KNOWN_HOSTS  saída de `ssh-keyscan -H <host>` (fixa a identidade do servidor)
+#
+# No servidor, a chave pública fica presa ao script de deploy em authorized_keys:
+#   restrict,command="<pasta do app>/scripts/deploy.sh" ssh-ed25519 AAAA… github-actions-deploy
+# O checkout no servidor é um clone deste repositório (com .env e secrets/ fora do git).
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+      - name: Cliente — build
+        working-directory: client
+        run: |
+          npm ci
+          BASE_PATH=/sound npx vite build
+      - name: Servidor — dependências e sintaxe
+        working-directory: server
+        run: |
+          npm ci --omit=dev
+          find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
+      - name: Script de deploy — sintaxe
+        run: bash -n scripts/deploy.sh
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    # Deploys em fila, nunca cancelados no meio do docker compose.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    timeout-minutes: 30
+    steps:
+      - name: Configurar SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$PORT" \
+            -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            -o ServerAliveInterval=30 \
+            "$USER@$HOST" "deploy ${GITHUB_SHA}"
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
