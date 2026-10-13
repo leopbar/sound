@@ -54,6 +54,17 @@ export const usePlaylistStore = create((set, get) => {
       );
     },
 
+    moveTrack(id, from, to) {
+      update((list) =>
+        list.map((p) => {
+          if (p.id !== id || from === to || !p.tracks[from] || to < 0 || to >= p.tracks.length) return p;
+          const tracks = [...p.tracks];
+          tracks.splice(to, 0, tracks.splice(from, 1)[0]);
+          return { ...p, tracks };
+        }),
+      );
+    },
+
     removeTrack(id, trackId) {
       update((list) => list.map((p) => (p.id === id ? { ...p, tracks: p.tracks.filter((t) => t.id !== trackId) } : p)));
     },

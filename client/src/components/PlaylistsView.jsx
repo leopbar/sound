@@ -33,12 +33,13 @@ function CreateForm() {
 }
 
 function PlaylistDetail({ playlist, onBack }) {
-  const { rename, remove, removeTrack } = usePlaylistStore.getState();
+  const { rename, remove, removeTrack, moveTrack } = usePlaylistStore.getState();
   const current = usePlayerStore(selectCurrentTrack);
   const status = usePlayerStore((s) => s.status);
   const failed = usePlayerStore((s) => s.failed);
   const { playQueue, toggle } = usePlayerStore.getState();
   const [name, setName] = useState(playlist.name);
+  const [drag, setDrag] = useState(null); // { from, over }
 
   const onSelect = (track, i) => {
     if (current?.id === track.id) toggle();
@@ -91,7 +92,27 @@ function PlaylistDetail({ playlist, onBack }) {
             const playing = active && status === 'playing';
             const err = failed[track.id];
             return (
-              <li key={track.id} className={`flex items-center gap-3 py-2 ${err ? 'opacity-50' : ''}`}>
+              <li
+                key={track.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  setDrag({ from: i, over: i });
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (drag && drag.over !== i) setDrag({ ...drag, over: i });
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (drag) moveTrack(playlist.id, drag.from, i);
+                  setDrag(null);
+                }}
+                onDragEnd={() => setDrag(null)}
+                className={`flex items-center gap-3 py-2 ${err ? 'opacity-50' : ''} ${
+                  drag && drag.over === i && drag.from !== i ? 'bg-surface-700' : ''
+                } ${drag?.from === i ? 'opacity-40' : ''}`}
+              >
                 <button
                   type="button"
                   onClick={() => onSelect(track, i)}
@@ -108,6 +129,28 @@ function PlaylistDetail({ playlist, onBack }) {
                   </span>
                   <span className="shrink-0 text-xs tabular-nums text-zinc-500">{track.duration ? formatTime(track.duration) : ''}</span>
                 </button>
+                <span className="flex shrink-0 flex-col text-[10px] leading-none text-zinc-500">
+                  <button
+                    type="button"
+                    disabled={i === 0}
+                    onClick={() => moveTrack(playlist.id, i, i - 1)}
+                    aria-label={`Mover ${track.title} para cima`}
+                    title="Mover para cima"
+                    className="px-1.5 py-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    disabled={i === playlist.tracks.length - 1}
+                    onClick={() => moveTrack(playlist.id, i, i + 1)}
+                    aria-label={`Mover ${track.title} para baixo`}
+                    title="Mover para baixo"
+                    className="px-1.5 py-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500"
+                  >
+                    ▼
+                  </button>
+                </span>
                 <button
                   type="button"
                   onClick={() => removeTrack(playlist.id, track.id)}
