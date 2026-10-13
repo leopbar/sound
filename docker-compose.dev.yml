@@ -1,6 +1,21 @@
 # Desenvolvimento com hot reload: http://localhost:5173
 #   docker compose -f docker-compose.dev.yml up
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sound
+      POSTGRES_PASSWORD: sound
+      POSTGRES_DB: sound
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sound -d sound"]
+      interval: 3s
+      retries: 20
+
   server:
     image: node:22-alpine
     working_dir: /app
@@ -11,6 +26,11 @@ services:
     environment:
       PORT: 4000
       CORS_ORIGINS: http://localhost:5173
+      APP_URL: http://localhost:5173
+      DATABASE_URL: postgres://sound:sound@db:5432/sound
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./server:/app
       - server_modules:/app/node_modules
@@ -33,5 +53,6 @@ services:
       - server
 
 volumes:
+  pgdata_dev:
   server_modules:
   client_modules:

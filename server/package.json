@@ -4,16 +4,22 @@
   "private": true,
   "type": "commonjs",
   "main": "index.js",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.7.7",
     "@distube/ytdl-core": "^4.16.12",
     "axios": "^1.7.9",
+    "better-auth": "^1.7.7",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "node-cache": "^5.1.2"
+    "node-cache": "^5.1.2",
+    "nodemailer": "^10.1.0",
+    "pg": "^8.23.1"
   }
 }

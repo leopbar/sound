@@ -2,6 +2,7 @@ const express = require('express');
 const musicService = require('../services/musicService');
 const streamService = require('../services/streamService');
 const { rateLimit } = require('../middleware/throttle');
+const { requireAuth } = require('../middleware/requireAuth');
 const { HttpError } = require('../lib/errors');
 
 const router = express.Router();
@@ -9,6 +10,9 @@ const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 router.get('/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
+
+// Daqui para baixo (busca e streaming), só usuários logados.
+router.use(requireAuth);
 
 function readQuery(req) {
   const q = String(req.query.q || '').trim();

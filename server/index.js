@@ -6,8 +6,15 @@ const cors = require('cors');
 // padrão. Com servidores distantes (MusicBrainz fica na Alemanha, ~200-330ms daqui) e
 // containers sem IPv6, a tentativa IPv4 é abortada e a conexão falha com ETIMEDOUT.
 net.setDefaultAutoSelectFamilyAttemptTimeout(Number(process.env.NET_FAMILY_TIMEOUT_MS) || 2000);
+const { toNodeHandler } = require('better-auth/node');
 const config = require('./config');
+const { auth, publicAuthConfig } = require('./auth');
+const { migrate } = require('./migrate');
+const { pool } = require('./db');
 const apiRouter = require('./routes/api');
+const playlistsRouter = require('./routes/playlists');
+const adminRouter = require('./routes/admin');
+const { requireAuth } = require('./middleware/requireAuth');
 const { HttpError } = require('./lib/errors');
 
 const app = express();
@@ -16,11 +23,17 @@ app.disable('x-powered-by');
 
 app.use(
   cors({
-    origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin) || config.corsOrigins.includes('*')),
+    origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)),
+    credentials: true,
     exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'X-Audio-Source'],
   })
 );
 
+// Better Auth lê o corpo cru: precisa vir antes de qualquer express.json().
+app.all('/api/auth/*', toNodeHandler(auth));
+app.get('/api/auth-config', (req, res) => res.json(publicAuthConfig));
+app.use('/api/playlists', requireAuth, playlistsRouter);
+app.use('/api/admin', requireAuth, adminRouter);
 app.use('/api', apiRouter);
 
 app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: 'Rota não encontrada.' }));
@@ -45,12 +58,19 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'INTERNAL', message: 'Erro interno.' });
 });
 
-const server = app.listen(config.port, () => {
-  console.log(`[server] ouvindo em :${config.port}`);
-  if (!config.youtubeApiKey) console.log('[server] YOUTUBE_API_KEY ausente: usando busca interna do YouTube.');
-  if (!config.jamendoClientId) console.log('[server] JAMENDO_CLIENT_ID ausente: fallback Jamendo desativado.');
-});
-
-for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.on(sig, () => server.close(() => process.exit(0)));
-}
+migrate()
+  .then(() => {
+    const server = app.listen(config.port, () => {
+      console.log(`[server] ouvindo em :${config.port} (app: ${config.appUrl})`);
+      if (!config.youtubeApiKey) console.log('[server] YOUTUBE_API_KEY ausente: usando busca interna do YouTube.');
+      if (!config.jamendoClientId) console.log('[server] JAMENDO_CLIENT_ID ausente: fallback Jamendo desativado.');
+      if (!publicAuthConfig.emailVerification) console.log('[server] SMTP_URL ausente: links de e-mail vão para este log e a verificação de e-mail fica desativada.');
+    });
+    for (const sig of ['SIGTERM', 'SIGINT']) {
+      process.on(sig, () => server.close(() => pool.end().finally(() => process.exit(0))));
+    }
+  })
+  .catch((err) => {
+    console.error('[db] falha ao preparar o banco:', err.message);
+    process.exit(1);
+  });

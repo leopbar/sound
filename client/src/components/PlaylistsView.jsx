@@ -3,18 +3,20 @@ import { usePlaylistStore } from '../store/playlistStore';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { formatTime } from '../lib/format';
 import Artwork from './Artwork';
-import { PlayIcon, PauseIcon } from './Icons';
+import { PlayIcon, PauseIcon, Spinner } from './Icons';
 
 function CreateForm() {
   const create = usePlaylistStore((s) => s.create);
   const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        if (!name.trim()) return;
-        create(name);
-        setName('');
+        if (!name.trim() || busy) return;
+        setBusy(true);
+        if (await create(name)) setName('');
+        setBusy(false);
       }}
       className="mb-6 flex gap-2"
     >
@@ -25,7 +27,7 @@ function CreateForm() {
         maxLength={60}
         className="min-w-0 flex-1 rounded-lg bg-surface-700 px-3 py-2 outline-none focus:ring-1 focus:ring-accent"
       />
-      <button type="submit" disabled={!name.trim()} className="rounded-lg bg-accent px-4 py-2 font-medium text-black disabled:opacity-40">
+      <button type="submit" disabled={!name.trim() || busy} className="rounded-lg bg-accent px-4 py-2 font-medium text-black disabled:opacity-40">
         Criar
       </button>
     </form>
@@ -172,6 +174,7 @@ function PlaylistDetail({ playlist, onBack }) {
 /** Tela de playlists: lista (com criação) e detalhe de uma playlist. */
 export default function PlaylistsView() {
   const playlists = usePlaylistStore((s) => s.playlists);
+  const status = usePlaylistStore((s) => s.status);
   const [openId, setOpenId] = useState(null);
   const open = playlists.find((p) => p.id === openId);
 
@@ -181,7 +184,18 @@ export default function PlaylistsView() {
     <div className="mx-auto max-w-3xl">
       <h2 className="mb-4 text-2xl font-bold">Suas playlists</h2>
       <CreateForm />
-      {!playlists.length ? (
+      {status === 'error' && !playlists.length ? (
+        <p className="py-10 text-center text-zinc-400">
+          Não foi possível carregar suas playlists.{' '}
+          <button type="button" onClick={() => usePlaylistStore.getState().load()} className="text-white underline">
+            Tentar de novo
+          </button>
+        </p>
+      ) : status !== 'ready' && !playlists.length ? (
+        <div className="flex justify-center py-10 text-zinc-500">
+          <Spinner className="h-6 w-6" />
+        </div>
+      ) : !playlists.length ? (
         <p className="py-10 text-center text-zinc-400">Você ainda não tem playlists.</p>
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">

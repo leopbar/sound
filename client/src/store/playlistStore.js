@@ -1,72 +1,114 @@
 import { create } from 'zustand';
+import { playlistsApi } from '../lib/api';
+import { usePlayerStore } from './playerStore';
 
-const KEY = 'sound:playlists';
+// Playlists da versão sem login, guardadas só no navegador: importadas na primeira entrada.
+const LEGACY_KEY = 'sound:playlists';
 
-function load() {
+function takeLegacy() {
   try {
-    const data = JSON.parse(localStorage.getItem(KEY));
-    return Array.isArray(data) ? data : [];
+    const data = JSON.parse(localStorage.getItem(LEGACY_KEY));
+    return Array.isArray(data) && data.length ? data : null;
   } catch {
-    return [];
+    return null;
   }
 }
 
-function save(playlists) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(playlists));
-  } catch {
-    /* armazenamento indisponível */
-  }
-}
+const notify = (text) => usePlayerStore.setState({ notice: { id: Date.now(), text } });
 
-const newId = () => `pl_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+let loading = null;
 
-/** Playlists do usuário, guardadas localmente. Cada faixa é salva por inteiro para poder tocar sem nova busca. */
+/**
+ * Playlists do usuário logado, guardadas no servidor. As alterações aparecem na hora
+ * (otimistas) e são desfeitas se o servidor recusar.
+ */
 export const usePlaylistStore = create((set, get) => {
-  const update = (fn) => {
-    const playlists = fn(get().playlists);
-    save(playlists);
-    set({ playlists });
-  };
+  /**
+   * Aplica a mudança local e chama o servidor. Se ele recusar, recarrega o estado real
+   * (restaurar um snapshot poderia desfazer outras alterações feitas nesse meio-tempo).
+   */
+  async function optimistic(change, call) {
+    set({ playlists: change(get().playlists) });
+    try {
+      await call();
+    } catch (err) {
+      notify(err.message || 'Não foi possível salvar a alteração.');
+      if (err.status !== 401) get().load();
+    }
+  }
+
+  const mapOne = (id, fn) => (list) => list.map((p) => (p.id === id ? fn(p) : p));
 
   return {
-    playlists: load(),
+    playlists: [],
+    status: 'idle', // idle | loading | ready | error
 
-    create(name, track) {
-      const id = newId();
-      update((list) => [...list, { id, name: name.trim() || 'Nova playlist', tracks: track ? [track] : [] }]);
-      return id;
+    load() {
+      if (loading) return loading;
+      set({ status: 'loading' });
+      loading = (async () => {
+        try {
+          const legacy = takeLegacy();
+          if (legacy) {
+            await playlistsApi.import(legacy);
+            localStorage.removeItem(LEGACY_KEY);
+            notify(`${legacy.length} playlist(s) deste navegador foram salvas na sua conta.`);
+          }
+          set({ playlists: await playlistsApi.list(), status: 'ready' });
+        } catch {
+          set({ status: 'error' });
+        } finally {
+          loading = null;
+        }
+      })();
+      return loading;
+    },
+
+    reset() {
+      set({ playlists: [], status: 'idle' });
+    },
+
+    async create(name, track) {
+      try {
+        const playlist = await playlistsApi.create(name.trim() || 'Nova playlist', track);
+        set({ playlists: [...get().playlists, playlist] });
+        return playlist.id;
+      } catch (err) {
+        notify(err.message || 'Não foi possível criar a playlist.');
+        return null;
+      }
     },
 
     rename(id, name) {
       const clean = name.trim();
       if (!clean) return;
-      update((list) => list.map((p) => (p.id === id ? { ...p, name: clean } : p)));
+      optimistic(mapOne(id, (p) => ({ ...p, name: clean })), () => playlistsApi.rename(id, clean));
     },
 
     remove(id) {
-      update((list) => list.filter((p) => p.id !== id));
+      optimistic((list) => list.filter((p) => p.id !== id), () => playlistsApi.remove(id));
     },
 
     addTrack(id, track) {
-      update((list) =>
-        list.map((p) => (p.id === id && !p.tracks.some((t) => t.id === track.id) ? { ...p, tracks: [...p.tracks, track] } : p)),
+      optimistic(
+        mapOne(id, (p) => (p.tracks.some((t) => t.id === track.id) ? p : { ...p, tracks: [...p.tracks, track] })),
+        () => playlistsApi.addTrack(id, track),
       );
     },
 
     moveTrack(id, from, to) {
-      update((list) =>
-        list.map((p) => {
-          if (p.id !== id || from === to || !p.tracks[from] || to < 0 || to >= p.tracks.length) return p;
-          const tracks = [...p.tracks];
-          tracks.splice(to, 0, tracks.splice(from, 1)[0]);
-          return { ...p, tracks };
-        }),
-      );
+      const p = get().playlists.find((x) => x.id === id);
+      if (!p || from === to || !p.tracks[from] || to < 0 || to >= p.tracks.length) return;
+      const tracks = [...p.tracks];
+      tracks.splice(to, 0, tracks.splice(from, 1)[0]);
+      optimistic(mapOne(id, (x) => ({ ...x, tracks })), () => playlistsApi.reorder(id, tracks.map((t) => t.id)));
     },
 
     removeTrack(id, trackId) {
-      update((list) => list.map((p) => (p.id === id ? { ...p, tracks: p.tracks.filter((t) => t.id !== trackId) } : p)));
+      optimistic(
+        mapOne(id, (p) => ({ ...p, tracks: p.tracks.filter((t) => t.id !== trackId) })),
+        () => playlistsApi.removeTrack(id, trackId),
+      );
     },
   };
 });

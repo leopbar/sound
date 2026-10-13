@@ -1,0 +1,13 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# O streaming de áudio é longo: sem buffer e sem timeout curto.
+	reverse_proxy client:80 {
+		flush_interval -1
+	}
+}
