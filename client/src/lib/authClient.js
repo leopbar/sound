@@ -1,10 +1,11 @@
 import { createAuthClient } from 'better-auth/react';
 import { adminClient, inferAdditionalFields } from 'better-auth/client/plugins';
 import { passkeyClient } from '@better-auth/passkey/client';
+import { API_BASE } from './base';
 
-/** Cliente do Better Auth: mesma origem (/api/auth), sessão em cookie httpOnly. */
+/** Cliente do Better Auth: mesma origem ({base}/api/auth), sessão em cookie httpOnly. */
 export const authClient = createAuthClient({
-  baseURL: `${import.meta.env.VITE_API_URL || window.location.origin}/api/auth`,
+  baseURL: `${API_BASE.startsWith('http') ? API_BASE : window.location.origin + API_BASE}/api/auth`,
   plugins: [passkeyClient(), adminClient(), inferAdditionalFields({ user: { mustChangePassword: { type: 'boolean', input: false } } })],
 });
 

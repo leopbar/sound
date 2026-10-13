@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authClient, authErrorMessage } from '../lib/authClient';
 import { Spinner } from './Icons';
+import { APP_BASE } from '../lib/base';
 
 const input =
   'w-full rounded-lg border border-surface-600 bg-surface-900 px-3 py-2 outline-none transition focus:border-accent focus:ring-1 focus:ring-accent';
@@ -76,7 +77,7 @@ function Profile({ user, emailVerification }) {
           <button
             type="button"
             disabled={state.busy}
-            onClick={() => run(async () => unwrap(await authClient.sendVerificationEmail({ email: user.email, callbackURL: '/' })), 'Link de confirmação enviado.')}
+            onClick={() => run(async () => unwrap(await authClient.sendVerificationEmail({ email: user.email, callbackURL: APP_BASE })), 'Link de confirmação enviado.')}
             className="text-xs text-zinc-400 underline hover:text-white"
           >
             reenviar confirmação
@@ -254,7 +255,7 @@ function DeleteAccount({ hasPassword }) {
           if (!window.confirm('Excluir sua conta e todas as playlists definitivamente?')) return;
           run(async () => {
             unwrap(await authClient.deleteUser(hasPassword ? { password } : {}));
-            window.location.assign('/');
+            window.location.assign(APP_BASE);
           });
         }}
         className="flex flex-wrap gap-2"
@@ -289,7 +290,7 @@ export default function AccountView({ session, config }) {
           type="button"
           onClick={async () => {
             await authClient.signOut();
-            window.location.assign('/'); // limpa player, filas e playlists da memória
+            window.location.assign(APP_BASE); // limpa player, filas e playlists da memória
           }}
           className={secondary}
         >

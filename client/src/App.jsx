@@ -13,6 +13,7 @@ import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useSearchStore } from './store/searchStore';
 import { usePlaylistStore } from './store/playlistStore';
 import { authClient } from './lib/authClient';
+import { API_BASE } from './lib/base';
 
 const DEFAULT_CONFIG = { providers: [], emailVerification: false, signUp: true };
 
@@ -22,7 +23,7 @@ export default function App() {
   const [config, setConfig] = useState(null);
 
   useEffect(() => {
-    fetch('/api/auth-config')
+    fetch(`${API_BASE}/api/auth-config`)
       .then((r) => (r.ok ? r.json() : DEFAULT_CONFIG))
       .catch(() => DEFAULT_CONFIG)
       .then(setConfig);

@@ -22,7 +22,9 @@ for (const name of ['google', 'github']) {
  */
 const auth = betterAuth({
   appName: 'Sound',
-  baseURL: config.appUrl,
+  // URL completa das rotas, com o subcaminho do app se houver (https://seudominio.com/sound/api/auth):
+  // base dos links de e-mail e callbacks OAuth, e o prefixo que o roteador do Better Auth espera.
+  baseURL: `${config.appUrl}/api/auth`,
   basePath: '/api/auth',
   secret: config.auth.secret,
   database: pool,
@@ -111,6 +113,8 @@ const auth = betterAuth({
     // O nginx sobrescreve X-Real-IP com o IP real; o cliente não consegue forjá-lo.
     ipAddress: { ipAddressHeaders: ['x-real-ip'] },
     useSecureCookies: appOrigin.protocol === 'https:',
+    // O domínio pode hospedar outros apps: nome próprio evita colisão de cookies.
+    cookiePrefix: 'sound',
   },
 
   plugins: [

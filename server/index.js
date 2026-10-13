@@ -30,11 +30,16 @@ app.use(
 );
 
 // Better Auth lê o corpo cru: precisa vir antes de qualquer express.json().
-app.all('/api/auth/*', toNodeHandler(auth));
-app.get('/api/auth-config', (req, res) => res.json(publicAuthConfig));
-app.use('/api/playlists', requireAuth, playlistsRouter);
-app.use('/api/admin', requireAuth, adminRouter);
-app.use('/api', apiRouter);
+// Tudo sob {basePath}/api ('' no local, '/sound' na VPS). As streamUrl das faixas continuam
+// relativas (/api/stream/...): o frontend acrescenta o subcaminho.
+const api = `${config.basePath}/api`;
+app.all(`${api}/auth/*`, toNodeHandler(auth));
+app.get(`${api}/auth-config`, (req, res) => res.json(publicAuthConfig));
+app.use(`${api}/playlists`, requireAuth, playlistsRouter);
+app.use(`${api}/admin`, requireAuth, adminRouter);
+app.use(api, apiRouter);
+// Healthcheck do Docker (Dockerfile) num caminho fixo, qualquer que seja o subcaminho.
+if (config.basePath) app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 app.use((req, res) => res.status(404).json({ error: 'NOT_FOUND', message: 'Rota não encontrada.' }));
 

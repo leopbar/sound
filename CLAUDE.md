@@ -4,23 +4,37 @@
 > por que foi feito assim e quais invariantes não podem ser quebrados. Detalhes de uso/deploy
 > estão no [README.md](README.md). Ao concluir uma mudança relevante, **atualize este arquivo**.
 
-Idioma: o usuário (Leonardo) conversa em **português**; textos de UI, mensagens de erro da API,
+Idioma: o usuário conversa em **português**; textos de UI, mensagens de erro da API,
 comentários e README são em português. Mensagens de commit em inglês.
 
 ## O que é
 
 Player de música: busca gravações (MusicBrainz) e toca o áudio via proxy (YouTube → fallback
 Jamendo / Internet Archive). Desde o commit `143441b` tem **login obrigatório**, **playlists
-por usuário no PostgreSQL** e **painel de administração**. Vai ser publicado num **VPS** com
-Docker Compose + Caddy (HTTPS).
+por usuário no PostgreSQL** e **painel de administração**. Está publicado num
+VPS (Docker Compose num subcaminho, atrás do nginx do servidor; ver "Ambiente").
 
 ## Arquitetura
 
 ```
-Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
-          ──▶ nginx (client/, serve o build do React e faz proxy de /api)
+Navegador ──▶ nginx já existente no servidor (subcaminho)  — ou Caddy (perfil "https")
+          ──▶ nginx (client/, serve o build do React e faz proxy de {base}/api)
           ──▶ Express (server/, porta 4000) ──▶ PostgreSQL 17 (volume pgdata)
 ```
+
+### Subcaminho (`BASE_PATH`)
+O app roda na raiz (local, `:8088`) **ou** num subcaminho (ex.: `https://seudominio.com/sound`).
+- O caminho vem do `APP_URL` (servidor: `config.basePath`, rotas em `${basePath}/api`) e do build
+  arg `BASE_PATH` (cliente: `base` do Vite; arquivos em `html/<BASE_PATH>/`). **Os dois têm que bater.**
+- Front: nunca escreva `/api/...`, `/icons/...` ou `'/'` direto; use `client/src/lib/base.js`
+  (`API_BASE`, `APP_BASE`, `appPath()`). `manifest.webmanifest` usa URLs relativas; `sw.js` deriva
+  a base do próprio escopo.
+- `streamUrl` das faixas fica salva **relativa** (`/api/stream/...`); o cliente prefixa `API_BASE`.
+- `client/nginx.conf.template`: o nginx oficial aplica `envsubst` só em `BASE_PATH`
+  (`NGINX_ENVSUBST_FILTER`). Não escreva `${BASE_PATH}` em comentários do template.
+- Better Auth: `baseURL = ${APP_URL}/api/auth` (o roteador dele usa o pathname dessa URL).
+  Cookies com `cookiePrefix: 'sound'` (o domínio pode hospedar outros apps).
+- Healthcheck do Docker: `/api/health` sempre existe na raiz, além de `${basePath}/api/health`.
 
 - **client/**: React 18 + Vite 6 + Tailwind 3 + Zustand 5. Sem router: `App.jsx` alterna views
   (`search | playlists | admin | account`) por estado.
@@ -106,8 +120,8 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
 - Funções `ctx.internalAdapter.*` do Better Auth exigem contexto de requisição e **falham em
   scripts** ("No auth context found"). Em scripts/rotas próprias use SQL direto + `hashPassword`
   de `better-auth/crypto` (como em `lib/tempPassword.js`).
-- Admin atual: `lbarretti@gmail.com` (Leonardo). Recuperar acesso:
-  `docker compose exec server node scripts/create-admin.js lbarretti@gmail.com "Leonardo"`.
+- Recuperar acesso de admin: `docker compose exec server node scripts/create-admin.js <email> "<nome>"`
+  (o e-mail do admin real não fica neste arquivo; está na memória local da sessão).
 
 ## Banco de dados
 
@@ -144,15 +158,23 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
 - `.env` (não versionado) precisa de `BETTER_AUTH_SECRET` e `POSTGRES_PASSWORD`; o compose
   falha sem eles. Ver `.env.example` para o resto (`APP_URL`, `DOMAIN`, `CLIENT_BIND`, `SMTP_URL`,
   OAuth, `SIGNUP_ENABLED`, chaves de música).
-- **Local do Leonardo**: stack de produção rodando em **http://localhost:8088** (`CLIENT_PORT=8088`,
+- **Local do usuário**: stack de produção rodando em **http://localhost:8088** (`CLIENT_PORT=8088`,
   `APP_URL=http://localhost:8088` no `.env`). Depois de mudar código: `docker compose up -d --build`.
 - **Portas ocupadas na máquina** por outros projetos: 5173 (outro Vite), 55432 e 5432 (outros
   Postgres), 8080, 80 etc. Para testes isolados use outro nome de projeto
   (`docker compose -p soundtest …` com outra `CLIENT_PORT`) e **não derrube o stack `sound`**.
 - Dev com hot reload: `docker compose -f docker-compose.dev.yml up` (inclui Postgres; `APP_URL`
   `http://localhost:5173`).
-- VPS: `.env` com `APP_URL=https://dominio`, `DOMAIN`, `CLIENT_BIND=127.0.0.1`, `SMTP_URL`;
-  `docker compose --profile https up -d --build`; depois criar o admin com o script (o banco do VPS é outro).
+- **Produção**: num subcaminho, atrás de um nginx já existente no servidor (ver README), com
+  `SIGNUP_ENABLED=false` (contas novas só pelo painel Admin). Os detalhes operacionais (servidor,
+  caminhos, portas, como atualizar) ficam **fora do repositório**, na memória local da sessão.
+- **Este repositório é PÚBLICO.** Nunca versione IP/host de servidor, caminhos ou portas internas
+  de produção, e-mails ou outros dados pessoais, nem segredos. Confira o diff antes de commitar.
+- O servidor de produção hospeda outros sistemas: não mexa em nada que não seja do Sound.
+- **YouTube bloqueia IPs de datacenter** ("Sign in to confirm you're not a bot"), tanto ytdl-core
+  quanto yt-dlp: em servidor, o stream só funciona com cookies de uma conta Google secundária,
+  arquivo Netscape em `./secrets/youtube-cookies.txt` (montado gravável em `/secrets`, porque o
+  yt-dlp regrava os cookies renovados; legível só pelo uid 1000) + `YTDLP_COOKIES_FILE` no `.env`.
 
 ## Como testar uma mudança
 
@@ -161,10 +183,10 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
 3. Fluxos via `curl` precisam do header `Origin: http://localhost:8088` (CSRF) e de cookie jar.
 4. Para testar admin sem mexer na conta real, crie um admin descartável com o script
    (`teste-admin@test.dev`), teste e apague-o depois (`DELETE FROM "user" WHERE email = …`).
-   Nunca altere a senha/conta do `lbarretti@gmail.com` em testes.
+   Nunca altere a senha/conta do admin real em testes.
 5. O rate limit de login (5/min por IP) afeta testes repetidos: espere 1 min ou use outra conta.
 
-## Regras de trabalho com o Leonardo
+## Regras de trabalho com o usuário
 
 - **Nunca** faça `git commit`/`git push` sem autorização explícita a cada vez; **sem** trailer
   `Co-Authored-By` (regra global dele).

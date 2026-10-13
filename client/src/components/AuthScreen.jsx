@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { authClient, authErrorMessage } from '../lib/authClient';
 import { Spinner } from './Icons';
+import { APP_BASE, appPath } from '../lib/base';
 
 const PROVIDERS = {
   google: {
@@ -34,11 +35,11 @@ function readUrlState() {
   if (urlState) return urlState;
   const params = new URLSearchParams(window.location.search);
   urlState = {
-    resetToken: window.location.pathname === '/reset-password' ? params.get('token') : null,
+    resetToken: window.location.pathname === appPath('reset-password') ? params.get('token') : null,
     error: params.get('error'),
   };
-  if (urlState.resetToken || urlState.error || window.location.pathname !== '/') {
-    window.history.replaceState(null, '', '/');
+  if (urlState.resetToken || urlState.error || window.location.pathname !== APP_BASE) {
+    window.history.replaceState(null, '', APP_BASE);
   }
   return urlState;
 }
@@ -140,14 +141,14 @@ export default function AuthScreen({ config }) {
         unwrap(await authClient.signIn.email({ email: form.email, password: form.password, rememberMe: true }));
       } else if (mode === 'signup') {
         const data = unwrap(
-          await authClient.signUp.email({ name: form.name.trim(), email: form.email, password: form.password, callbackURL: '/' }),
+          await authClient.signUp.email({ name: form.name.trim(), email: form.email, password: form.password, callbackURL: APP_BASE }),
         );
         if (!data?.token) {
           setMode('sent');
           setInfo(`Enviamos um link de confirmação para ${form.email}. Abra-o para ativar sua conta.`);
         }
       } else if (mode === 'forgot') {
-        unwrap(await authClient.requestPasswordReset({ email: form.email, redirectTo: '/reset-password' }));
+        unwrap(await authClient.requestPasswordReset({ email: form.email, redirectTo: appPath('reset-password') }));
         setMode('sent');
         setInfo(`Se existir uma conta com ${form.email}, você vai receber um link para criar uma nova senha.`);
       } else if (mode === 'reset') {
@@ -160,7 +161,7 @@ export default function AuthScreen({ config }) {
   };
 
   const passkeySignIn = () => run(async () => unwrap(await authClient.signIn.passkey()));
-  const social = (provider) => run(async () => unwrap(await authClient.signIn.social({ provider, callbackURL: '/', errorCallbackURL: '/' })));
+  const social = (provider) => run(async () => unwrap(await authClient.signIn.social({ provider, callbackURL: APP_BASE, errorCallbackURL: APP_BASE })));
 
   const titles = {
     signin: 'Entrar no Sound',

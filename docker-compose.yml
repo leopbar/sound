@@ -1,6 +1,8 @@
 # Local:   docker compose up -d --build            -> http://localhost:8080
 # VPS:     DOMAIN=sound.seudominio.com no .env e
 #          docker compose --profile https up -d --build  -> https://sound.seudominio.com
+# Subcaminho atrás de um nginx já existente: APP_URL=https://seudominio.com/sound,
+#          BASE_PATH=/sound, CLIENT_BIND=127.0.0.1, sem o perfil https (ver README).
 services:
   db:
     image: postgres:17-alpine
@@ -34,9 +36,17 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?defina BETTER_AUTH_SECRET no .env (openssl rand -base64 32)}
     expose:
       - "4000"
+    volumes:
+      # Cookies do YouTube para o yt-dlp (YTDLP_COOKIES_FILE=/secrets/youtube-cookies.txt no .env).
+      # Gravável: o yt-dlp atualiza os cookies que o YouTube renova. Fora do git.
+      - ./secrets:/secrets
 
   client:
-    build: ./client
+    build:
+      context: ./client
+      args:
+        # Subcaminho do app (ex.: /sound). Tem que bater com o caminho do APP_URL.
+        BASE_PATH: ${BASE_PATH:-}
     restart: unless-stopped
     depends_on:
       server:

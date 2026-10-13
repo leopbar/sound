@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { APP_BASE } from './base';
 
 /**
  * Instalação como app (PWA). O Chrome dispara `beforeinstallprompt` uma vez, cedo (às vezes antes
@@ -43,6 +44,6 @@ window.matchMedia('(display-mode: standalone)').addEventListener?.('change', (e)
 export function registerServiceWorker() {
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Service worker:', err));
+    navigator.serviceWorker.register(`${APP_BASE}sw.js`, { scope: APP_BASE }).catch((err) => console.warn('Service worker:', err));
   });
 }

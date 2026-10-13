@@ -1,6 +1,5 @@
 import { authClient } from './authClient';
-
-const BASE = import.meta.env.VITE_API_URL || '';
+import { API_BASE as BASE } from './base';
 
 /** Sessão expirou/foi revogada em outro dispositivo: o useSession refaz a consulta e volta ao login. */
 function checkAuth(res) {

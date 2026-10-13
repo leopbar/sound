@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePwaStore, selectCanInstall } from '../lib/pwa';
 import { InstallIcon, ShareIcon } from './Icons';
+import { appPath } from '../lib/base';
 
 /** "Instalar app": só aparece quando o navegador permite instalar e o app ainda não está instalado. */
 export default function InstallButton() {
@@ -47,7 +48,7 @@ function IosHelp({ onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center gap-3">
-          <img src="/icons/icon-192.png" alt="" className="h-12 w-12 rounded-xl" />
+          <img src={appPath('icons/icon-192.png')} alt="" className="h-12 w-12 rounded-xl" />
           <h2 id="ios-install-title" className="text-lg font-semibold text-white">Instalar o Sound</h2>
         </div>
         <ol className="space-y-3">

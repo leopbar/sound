@@ -1,5 +1,8 @@
-# Atrás do Caddy (perfil "https" do compose): o IP real do cliente vem no
-# X-Forwarded-For, mas só confiamos nele quando a conexão vem da rede do Docker.
+# Template: a imagem oficial do nginx substitui a variável BASE_PATH na subida (envsubst). Ela é o
+# subcaminho do app ("/sound" na VPS, vazio no local); os arquivos ficam em /usr/share/nginx/html/<BASE_PATH>/.
+#
+# Atrás de um proxy (Caddy ou nginx do host): o IP real do cliente vem no X-Forwarded-For,
+# mas só confiamos nele quando a conexão vem da rede do Docker.
 set_real_ip_from 172.16.0.0/12;
 set_real_ip_from 10.0.0.0/8;
 set_real_ip_from 192.168.0.0/16;
@@ -20,7 +23,7 @@ server {
   add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
 
   # API e streaming: mesma origem do app (sem CORS; cookies de sessão first-party; Web Audio API funciona).
-  location /api/ {
+  location ${BASE_PATH}/api/ {
     proxy_pass http://server:4000;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
@@ -38,7 +41,7 @@ server {
     proxy_send_timeout 1h;
   }
 
-  location /assets/ {
+  location ${BASE_PATH}/assets/ {
     expires 1y;
     add_header Cache-Control "public, immutable";
     add_header X-Content-Type-Options "nosniff" always;
@@ -46,7 +49,7 @@ server {
 
   # PWA: o mime.types do nginx não conhece .webmanifest. Sem add_header aqui, herda os do server.
   # O sw.js cai no "location /" abaixo (no-cache), para o navegador pegar versões novas.
-  location = /manifest.webmanifest {
+  location = ${BASE_PATH}/manifest.webmanifest {
     types { }
     default_type application/manifest+json;
     expires -1;
@@ -59,7 +62,7 @@ server {
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
-    try_files $uri /index.html;
+    try_files $uri ${BASE_PATH}/index.html;
   }
 
   gzip on;

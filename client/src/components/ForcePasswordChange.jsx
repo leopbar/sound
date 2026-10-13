@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { authClient, authErrorMessage } from '../lib/authClient';
 import { Spinner } from './Icons';
+import { APP_BASE } from '../lib/base';
 
 const input =
   'w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2.5 outline-none transition focus:border-accent focus:ring-1 focus:ring-accent';
@@ -28,7 +29,7 @@ export default function ForcePasswordChange({ user }) {
       setBusy(false);
       return;
     }
-    window.location.assign('/');
+    window.location.assign(APP_BASE);
   }
 
   return (
@@ -64,7 +65,7 @@ export default function ForcePasswordChange({ user }) {
             type="button"
             onClick={async () => {
               await authClient.signOut();
-              window.location.assign('/');
+              window.location.assign(APP_BASE);
             }}
             className="mt-4 w-full text-center text-sm text-zinc-400 hover:text-white"
           >

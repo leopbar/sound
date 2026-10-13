@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { engine } from '../lib/audioEngine';
+import { appPath } from '../lib/base';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 
 /**
@@ -76,7 +77,7 @@ export function useAudioPlayer() {
       album: track.album || '',
       artwork: track.thumbnail
         ? [{ src: track.thumbnail, sizes: '250x250' }]
-        : [{ src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' }],
+        : [{ src: appPath('icons/icon-512.png'), sizes: '512x512', type: 'image/png' }],
     });
     const actions = {
       play: toggle,

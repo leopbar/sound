@@ -3,6 +3,9 @@ const isProd = process.env.NODE_ENV === 'production';
 // URL pública do app (o que o usuário digita no navegador). Base dos links de e-mail,
 // dos callbacks OAuth e do domínio dos passkeys (WebAuthn rpID).
 const appUrl = (process.env.APP_URL || 'http://localhost:5173').replace(/\/+$/, '');
+// Subcaminho do app ('' na raiz; '/sound' quando APP_URL = https://seudominio.com/sound). As rotas da
+// API ficam em {basePath}/api: o proxy da frente repassa o caminho inteiro, sem cortar o prefixo.
+const basePath = new URL(appUrl).pathname.replace(/\/+$/, '');
 
 const authSecret = process.env.BETTER_AUTH_SECRET || '';
 if (isProd && authSecret.length < 32) {
@@ -13,10 +16,12 @@ module.exports = {
   isProd,
   port: Number(process.env.PORT) || 4000,
   appUrl,
+  basePath,
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:8080')
     .split(',')
     .map((s) => s.trim())
-    .filter(Boolean),
+    .filter(Boolean)
+    .map((s) => new URL(s).origin), // CORS compara origens; APP_URL pode ter caminho
   databaseUrl: process.env.DATABASE_URL || 'postgres://sound:sound@localhost:5432/sound',
   auth: {
     secret: authSecret || 'dev-only-secret-change-me-dev-only-secret',

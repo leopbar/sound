@@ -48,6 +48,35 @@ docker compose exec db pg_dump -U sound sound > backup.sql
 
 Depois de criar as contas que quiser, `SIGNUP_ENABLED=false` fecha o cadastro público.
 
+### Num subcaminho, atrás de um nginx já existente (ex.: https://seudominio.com/sound)
+
+Quando o servidor já tem um nginx com Certbot nas portas 80/443, não use o perfil `https` (o Caddy
+disputaria as portas). O nginx do host repassa `/sound/` **sem cortar o
+prefixo**:
+
+```ini
+APP_URL=https://seudominio.com/sound
+BASE_PATH=/sound          # tem que bater com o caminho do APP_URL (vai para o build do front)
+CLIENT_BIND=127.0.0.1
+CLIENT_PORT=3100        # qualquer porta livre no servidor
+```
+
+```nginx
+location = /sound { return 301 /sound/; }
+location /sound/ {
+    proxy_pass http://127.0.0.1:3100;        # sem barra no fim: repassa /sound/... inteiro
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off; proxy_request_buffering off;
+    proxy_read_timeout 1h; proxy_send_timeout 1h;
+}
+```
+
+Atualizar: copie o código para o servidor e rode `docker compose up -d --build` na pasta dele.
+
 ## Autenticação
 
 [Better Auth](https://www.better-auth.com), self-hosted no próprio backend (nenhum serviço externo, nenhum custo por usuário):
@@ -93,6 +122,7 @@ docker compose -f docker-compose.dev.yml up
 | `BETTER_AUTH_SECRET` | **Obrigatório.** Assina cookies e tokens. `openssl rand -base64 32`. |
 | `POSTGRES_PASSWORD` | **Obrigatório.** Senha do banco. |
 | `DOMAIN` / `CLIENT_BIND` | HTTPS com Caddy no VPS (veja acima). |
+| `BASE_PATH` | Subcaminho do app (ex.: `/sound`); vazio = raiz. Precisa bater com o caminho do `APP_URL`. |
 | `SMTP_URL` / `MAIL_FROM` | Recomendado em produção: verificação de e-mail e recuperação de senha. |
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | Opcional: login social. |
 | `SIGNUP_ENABLED` | `false` fecha o cadastro público. |
