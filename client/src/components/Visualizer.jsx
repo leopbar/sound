@@ -44,8 +44,8 @@ export default function Visualizer({ className = '', bars = 32 }) {
         heights[i] += (target - heights[i]) * 0.35; // suaviza a queda ao pausar
         const bh = Math.max(2, heights[i] * h);
         const g = ctx.createLinearGradient(0, h, 0, h - bh);
-        g.addColorStop(0, '#1db954');
-        g.addColorStop(1, '#a7f3d0');
+        g.addColorStop(0, '#0b8fe6');
+        g.addColorStop(1, '#bae6fd');
         ctx.fillStyle = g;
         ctx.fillRect(i * (bw + gap), h - bh, bw, bh);
       }

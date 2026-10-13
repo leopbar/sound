@@ -10,14 +10,14 @@ const OUT = new URL('../public/icons/', import.meta.url);
 // "S" de Sound cuja ponta inferior vira a cabeça de uma nota musical, entre barras de equalizador.
 const art = `
   <g stroke-linecap="round" stroke-width="14">
-    <path d="M96 240v32" stroke="#1ed760" stroke-opacity=".35"/>
-    <path d="M128 214v84" stroke="#1ed760" stroke-opacity=".6"/>
-    <path d="M384 196v84" stroke="#14b8a6" stroke-opacity=".6"/>
-    <path d="M416 222v32" stroke="#14b8a6" stroke-opacity=".35"/>
+    <path d="M96 240v32" stroke="#1ea7ff" stroke-opacity=".35"/>
+    <path d="M128 214v84" stroke="#1ea7ff" stroke-opacity=".6"/>
+    <path d="M384 196v84" stroke="#3b6cff" stroke-opacity=".6"/>
+    <path d="M416 222v32" stroke="#3b6cff" stroke-opacity=".35"/>
   </g>
   <path d="M330 172C304 128 190 128 190 200c0 64 136 48 136 116 0 60-90 76-130 40"
         fill="none" stroke="url(#ink)" stroke-width="42" stroke-linecap="round"/>
-  <ellipse cx="176" cy="360" rx="44" ry="32" transform="rotate(-24 176 360)" fill="#14b8a6"/>`;
+  <ellipse cx="176" cy="360" rx="44" ry="32" transform="rotate(-24 176 360)" fill="#3b6cff"/>`;
 
 const defs = `
   <defs>
@@ -25,10 +25,10 @@ const defs = `
       <stop offset="0" stop-color="#1c1c26"/><stop offset="1" stop-color="#08080b"/>
     </linearGradient>
     <radialGradient id="glow">
-      <stop offset="0" stop-color="#1ed760" stop-opacity=".28"/><stop offset="1" stop-color="#1ed760" stop-opacity="0"/>
+      <stop offset="0" stop-color="#1ea7ff" stop-opacity=".28"/><stop offset="1" stop-color="#1ea7ff" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="ink" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6cf7a6"/><stop offset=".5" stop-color="#1ed760"/><stop offset="1" stop-color="#14b8a6"/>
+      <stop offset="0" stop-color="#7cd0ff"/><stop offset=".5" stop-color="#1ea7ff"/><stop offset="1" stop-color="#3b6cff"/>
     </linearGradient>
   </defs>`;
 

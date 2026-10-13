@@ -20,7 +20,7 @@
   .range::-moz-range-thumb {
     @apply h-3 w-3 rounded-full border-0 bg-white opacity-0 transition-opacity;
   }
-  .range:hover, .range:focus-visible { --fill: #1ed760; }
+  .range:hover, .range:focus-visible { --fill: #1ea7ff; }
   .range:hover::-webkit-slider-thumb, .range:focus-visible::-webkit-slider-thumb { @apply opacity-100; }
   .range:hover::-moz-range-thumb, .range:focus-visible::-moz-range-thumb { @apply opacity-100; }
 }

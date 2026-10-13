@@ -230,9 +230,9 @@ function StickFigure() {
               <circle cx="91" cy="64" r="3.5" fill="#f4f4f5" />
               <circle cx="109" cy="64" r="3.5" fill="#f4f4f5" />
               <path d="M90 76q10 9 20 0" stroke="#f4f4f5" strokeWidth="4" fill="none" strokeLinecap="round" />
-              <path d="M72 52q28-26 56 0" stroke="#1ed760" strokeWidth="6" fill="none" strokeLinecap="round" />
-              <rect x="66" y="56" width="10" height="16" rx="4" fill="#1ed760" />
-              <rect x="124" y="56" width="10" height="16" rx="4" fill="#1ed760" />
+              <path d="M72 52q28-26 56 0" stroke="#1ea7ff" strokeWidth="6" fill="none" strokeLinecap="round" />
+              <rect x="66" y="56" width="10" height="16" rx="4" fill="#1ea7ff" />
+              <rect x="124" y="56" width="10" height="16" rx="4" fill="#1ea7ff" />
             </>
           )}
         </>

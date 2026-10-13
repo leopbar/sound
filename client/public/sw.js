@@ -1,7 +1,7 @@
 // Service worker do Sound. Guarda só o "casco" do app (HTML, JS/CSS com hash, ícones) para abrir
 // rápido e mostrar algo sem rede. NUNCA intercepta /api/: sessão, playlists e áudio sempre vão ao
 // servidor (logout/banimento imediatos dependem disso).
-const CACHE = 'sound-shell-v2';
+const CACHE = 'sound-shell-v3';
 const MAX_ASSETS = 80;
 // Caminho do app ('/' no local, '/sound/' na VPS): o escopo com que o SW foi registrado.
 const BASE = new URL(self.registration.scope).pathname;

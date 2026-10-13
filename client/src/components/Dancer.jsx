@@ -153,10 +153,10 @@ export default function Dancer({ className = '' }) {
       <svg viewBox="0 0 200 240" className="relative h-[60%] max-h-[280px] w-auto overflow-visible" role="img" aria-label={`${name} dançando`}>
         <defs>
           <radialGradient id="dancer-glow">
-            <stop offset="0" stopColor="#bbf7d0" stopOpacity=".9" />
-            <stop offset=".3" stopColor="#1ed760" stopOpacity=".6" />
-            <stop offset=".65" stopColor="#1ed760" stopOpacity=".18" />
-            <stop offset="1" stopColor="#1ed760" stopOpacity="0" />
+            <stop offset="0" stopColor="#bae6fd" stopOpacity=".9" />
+            <stop offset=".3" stopColor="#1ea7ff" stopOpacity=".6" />
+            <stop offset=".65" stopColor="#1ea7ff" stopOpacity=".18" />
+            <stop offset="1" stopColor="#1ea7ff" stopOpacity="0" />
           </radialGradient>
         </defs>
         {/* Luz atrás do personagem: acende a cada batida (mais forte no 1º tempo). */}
