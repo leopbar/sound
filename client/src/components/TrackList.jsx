@@ -1,6 +1,7 @@
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { formatTime, formatViews, SOURCE_LABEL } from '../lib/format';
 import Artwork from './Artwork';
+import AddToPlaylist from './AddToPlaylist';
 import { PlayIcon, PauseIcon, Spinner } from './Icons';
 
 const GRID = {
@@ -77,7 +78,8 @@ export default function TrackList({ tracks, variant = 'recording', loading, erro
         const playing = active && status === 'playing';
         const err = failed[track.id];
         return (
-          <li key={track.id}>
+          <li key={track.id} className="group/card relative">
+            <AddToPlaylist track={track} />
             <button
               type="button"
               onClick={() => onSelect(track, i)}
