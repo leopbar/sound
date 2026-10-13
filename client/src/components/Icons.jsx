@@ -65,6 +65,11 @@ export const LyricsIcon = (p) => (
     <path d="M4 6h10M4 11h10M4 16h6" /><path d="M18 17V5l3-1" /><circle cx="16" cy="17" r="2" />
   </svg>
 );
+export const DancerIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <circle cx="13" cy="4" r="2" /><path d="M5 9l4-1 4 2 5-3M13 10l-1 5 4 3 1 4M12 15l-4 2-2 5" />
+  </svg>
+);
 export const CloseIcon = (p) => (
   <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}>
     <path d="M6 6l12 12M18 6 6 18" />

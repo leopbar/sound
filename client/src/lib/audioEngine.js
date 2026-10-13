@@ -9,6 +9,7 @@ class AudioEngine {
     this.audio.crossOrigin = 'anonymous'; // necessário para o AnalyserNode ler amostras
     this.ctx = null;
     this.analyser = null;
+    this.beatAnalyser = null;
   }
 
   /** O AudioContext só pode ser criado/retomado após um gesto do usuário. */
@@ -24,7 +25,13 @@ class AudioEngine {
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.8;
-    source.connect(this.analyser);
+    // Analisador do ritmo (dançarino): mais resolução nos graves e sem suavização, que apagaria os ataques.
+    this.beatAnalyser = this.ctx.createAnalyser();
+    this.beatAnalyser.fftSize = 1024;
+    this.beatAnalyser.smoothingTimeConstant = 0;
+    // Analisadores repassam o áudio intacto; ficam em série para serem sempre processados.
+    source.connect(this.beatAnalyser);
+    this.beatAnalyser.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
   }
 

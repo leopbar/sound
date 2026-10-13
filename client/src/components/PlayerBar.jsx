@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { useLyricsStore } from '../store/lyricsStore';
+import { useDancerStore } from '../store/dancerStore';
 import { formatTime, SOURCE_LABEL } from '../lib/format';
 import Artwork from './Artwork';
 import Visualizer from './Visualizer';
 import LyricsPanel from './LyricsPanel';
-import { PlayIcon, PauseIcon, NextIcon, PrevIcon, VolumeIcon, LyricsIcon, Spinner } from './Icons';
+import { PlayIcon, PauseIcon, NextIcon, PrevIcon, VolumeIcon, LyricsIcon, DancerIcon, Spinner } from './Icons';
 
 function Seekbar() {
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -109,6 +110,24 @@ function LyricsButton({ track }) {
   );
 }
 
+function DancerButton({ track }) {
+  const on = useDancerStore((s) => s.on);
+  const setOn = useDancerStore((s) => s.setOn);
+  return (
+    <button
+      type="button"
+      onClick={() => setOn(!on)}
+      disabled={!track}
+      aria-pressed={on}
+      className={`transition disabled:opacity-30 ${on ? 'text-accent' : 'text-zinc-400 hover:text-white'}`}
+      aria-label={on ? 'Esconder dançarino' : 'Mostrar dançarino'}
+      title="Dançarino"
+    >
+      <DancerIcon />
+    </button>
+  );
+}
+
 export default function PlayerBar() {
   const track = usePlayerStore(selectCurrentTrack);
   const status = usePlayerStore((s) => s.status);
@@ -166,8 +185,9 @@ export default function PlayerBar() {
             <button type="button" onClick={next} disabled={!hasNext} className="text-zinc-400 transition hover:text-white disabled:opacity-30" aria-label="Próxima">
               <NextIcon />
             </button>
-            <span className="md:hidden">
+            <span className="flex items-center gap-5 md:hidden">
               <LyricsButton track={track} />
+              <DancerButton track={track} />
             </span>
           </div>
           <div className="hidden w-full md:block">
@@ -179,6 +199,7 @@ export default function PlayerBar() {
         <div className="hidden items-center justify-end gap-4 md:flex">
           <Visualizer className="hidden h-10 w-32 lg:block" />
           <LyricsButton track={track} />
+          <DancerButton track={track} />
           <Volume />
         </div>
       </div>

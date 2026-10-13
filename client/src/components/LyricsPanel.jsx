@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { useLyricsStore } from '../store/lyricsStore';
+import { useDancerStore } from '../store/dancerStore';
+import Dancer from './Dancer';
 import { CloseIcon, Spinner } from './Icons';
 
 // O `timeupdate` chega a cada ~250 ms: adiantar um pouco faz a linha acender junto com a voz.
@@ -22,7 +24,7 @@ function activeIndex(lines, time) {
   return found;
 }
 
-function SyncedLyrics({ lines }) {
+function SyncedLyrics({ lines, compact }) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const seek = usePlayerStore((s) => s.seek);
   const active = activeIndex(lines, currentTime);
@@ -38,7 +40,7 @@ function SyncedLyrics({ lines }) {
   const pauseAuto = () => (manualUntil.current = Date.now() + MANUAL_SCROLL_PAUSE_MS);
 
   return (
-    <ol ref={listRef} onWheel={pauseAuto} onTouchMove={pauseAuto} className="space-y-4 py-[30vh]">
+    <ol ref={listRef} onWheel={pauseAuto} onTouchMove={pauseAuto} className={`space-y-4 ${compact ? 'py-[12vh]' : 'py-[30vh]'}`}>
       {lines.map((line, i) => (
         <li key={`${line.time}-${i}`}>
           <button
@@ -60,7 +62,7 @@ function SyncedLyrics({ lines }) {
 }
 
 function Message({ children }) {
-  return <p className="py-[20vh] text-center text-lg text-zinc-400">{children}</p>;
+  return <p className="py-[8vh] text-center text-lg text-zinc-400">{children}</p>;
 }
 
 export default function LyricsPanel() {
@@ -69,23 +71,31 @@ export default function LyricsPanel() {
   const status = useLyricsStore((s) => s.status);
   const lyrics = useLyricsStore((s) => s.lyrics);
   const lyricsTrackId = useLyricsStore((s) => s.trackId);
+  const dancerOn = useDancerStore((s) => s.on);
   const track = usePlayerStore(selectCurrentTrack);
+  const visible = open || dancerOn;
+
+  // Fechar o painel desliga a letra e o dançarino.
+  const close = () => {
+    setOpen(false);
+    useDancerStore.getState().setOn(false);
+  };
 
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && setOpen(false);
+    if (!visible) return;
+    const onKey = (e) => e.key === 'Escape' && close();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, setOpen]);
+  });
 
-  if (!open || !track) return null;
+  if (!visible || !track) return null;
 
   // Faixa nova ainda não tocou: a letra só é buscada depois do play.
   const pending = lyricsTrackId !== track.id;
   let body;
   if (pending || status === 'loading') {
     body = (
-      <div className="flex justify-center py-[20vh] text-zinc-500">
+      <div className="flex justify-center py-[8vh] text-zinc-500">
         <Spinner className="h-6 w-6" />
       </div>
     );
@@ -94,7 +104,7 @@ export default function LyricsPanel() {
   } else if (lyrics?.instrumental) {
     body = <Message>♪ Faixa instrumental ♪</Message>;
   } else if (lyrics?.synced) {
-    body = <SyncedLyrics lines={lyrics.synced} />;
+    body = <SyncedLyrics lines={lyrics.synced} compact={dancerOn} />;
   } else if (lyrics?.plain) {
     body = <p className="whitespace-pre-line py-8 text-xl font-semibold leading-relaxed text-zinc-200 md:text-2xl">{lyrics.plain}</p>;
   } else {
@@ -103,10 +113,10 @@ export default function LyricsPanel() {
 
   return (
     <section
-      aria-label="Letra"
-      className="fixed inset-0 z-10 overflow-y-auto bg-surface-900/95 pb-36 backdrop-blur-md md:pb-28"
+      aria-label={open ? 'Letra' : 'Dançarino'}
+      className="fixed inset-0 z-10 flex flex-col bg-surface-900/95 pb-36 backdrop-blur-md md:pb-28"
     >
-      <header className="sticky top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-surface-900 via-surface-900/90 to-transparent px-4 pb-6 pt-4">
+      <header className="flex shrink-0 items-center gap-3 px-4 pb-2 pt-4">
         <div className="mx-auto flex w-full max-w-3xl items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-lg font-bold">{track.title}</p>
@@ -114,20 +124,25 @@ export default function LyricsPanel() {
           </div>
           <button
             type="button"
-            onClick={() => setOpen(false)}
+            onClick={close}
             className="rounded-full bg-surface-700 p-2 text-zinc-300 transition hover:bg-surface-600 hover:text-white"
-            aria-label="Fechar letra"
+            aria-label="Fechar"
           >
             <CloseIcon />
           </button>
         </div>
       </header>
-      <div className="mx-auto max-w-3xl px-4">
-        {body}
-        {status === 'ready' && lyrics?.found && (
-          <p className="pb-6 text-xs text-zinc-600">Letra: {lyrics.source}</p>
-        )}
-      </div>
+      {dancerOn && <Dancer className="min-h-0 flex-1" />}
+      {open && (
+        <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(transparent,#000_8%,#000_92%,transparent)]">
+          <div className="mx-auto max-w-3xl px-4">
+            {body}
+            {status === 'ready' && lyrics?.found && (
+              <p className="pb-6 text-xs text-zinc-600">Letra: {lyrics.source}</p>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
