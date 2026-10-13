@@ -70,6 +70,11 @@ export const DancerIcon = (p) => (
     <circle cx="13" cy="4" r="2" /><path d="M5 9l4-1 4 2 5-3M13 10l-1 5 4 3 1 4M12 15l-4 2-2 5" />
   </svg>
 );
+export const TranslateIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M3 5h11M8 3v2M5 9c1.5 3 4 5 7 6M12 5c-1 4-4 8-8 10M13 21l4-9 4 9M14.5 18h5" />
+  </svg>
+);
 export const PlusIcon = (p) => (
   <svg {...base} fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" {...p}>
     <path d="M12 5v14M5 12h14" />

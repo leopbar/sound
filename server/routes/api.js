@@ -2,6 +2,7 @@ const express = require('express');
 const musicService = require('../services/musicService');
 const streamService = require('../services/streamService');
 const lyricsService = require('../services/lyrics');
+const translateService = require('../services/translate');
 const { rateLimit } = require('../middleware/throttle');
 const { requireAuth } = require('../middleware/requireAuth');
 const { HttpError } = require('../lib/errors');
@@ -54,6 +55,24 @@ router.get('/lyrics', rateLimit({ windowMs: 60_000, max: 60 }), wrap(async (req,
   });
   res.set('Cache-Control', 'private, max-age=3600').json(lyrics);
 }));
+
+// Tradução da letra (pt-BR). Recebe as linhas que o cliente já tem: { lines: string[] }.
+router.post(
+  '/lyrics/translation',
+  rateLimit({ windowMs: 60_000, max: 20 }),
+  express.json({ limit: '64kb' }),
+  wrap(async (req, res) => {
+    const lines = req.body?.lines;
+    if (!Array.isArray(lines) || !lines.length || lines.length > 500 || !lines.every((l) => typeof l === 'string')) {
+      throw new HttpError(400, 'INVALID_LINES', 'Envie "lines" (lista de até 500 linhas).');
+    }
+    const clean = lines.map((l) => l.slice(0, 500));
+    if (clean.reduce((n, l) => n + l.length, 0) > 30_000) {
+      throw new HttpError(400, 'LYRICS_TOO_LONG', 'Letra muito longa para traduzir.');
+    }
+    res.set('Cache-Control', 'no-store').json(await translateService.translateLines(clean));
+  })
+);
 
 const streamLimit = rateLimit({ windowMs: 60_000, max: 240 }); // seeks geram várias requisições
 

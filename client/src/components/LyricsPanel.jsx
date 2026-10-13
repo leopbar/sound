@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
-import { useLyricsStore } from '../store/lyricsStore';
+import { useLyricsStore, lyricsLines } from '../store/lyricsStore';
 import { useDancerStore } from '../store/dancerStore';
 import Dancer from './Dancer';
-import { CloseIcon, Spinner } from './Icons';
+import { CloseIcon, TranslateIcon, Spinner } from './Icons';
 
 // O `timeupdate` chega a cada ~250 ms: adiantar um pouco faz a linha acender junto com a voz.
 const LEAD_S = 0.3;
@@ -28,7 +28,7 @@ function activeIndex(lines, time) {
   return found;
 }
 
-function SyncedLyrics({ lines, overlay }) {
+function SyncedLyrics({ lines, overlay, translations }) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const seek = usePlayerStore((s) => s.seek);
   const active = activeIndex(lines, currentTime);
@@ -70,10 +70,61 @@ function SyncedLyrics({ lines, overlay }) {
             }`}
           >
             {line.text || '♪'}
+            {translations?.[i] && (
+              <span
+                className={`mt-1 block text-base font-medium md:text-lg ${
+                  i === active ? 'text-white/70' : overlay && i < active ? '' : 'opacity-75'
+                }`}
+              >
+                {translations[i]}
+              </span>
+            )}
           </button>
         </li>
       ))}
     </ol>
+  );
+}
+
+function PlainLyrics({ text, translations }) {
+  if (!translations) {
+    return <p className="whitespace-pre-line py-8 text-xl font-semibold leading-relaxed text-zinc-200 md:text-2xl">{text}</p>;
+  }
+  return (
+    <div className="py-8 text-xl font-semibold leading-relaxed text-zinc-200 md:text-2xl">
+      {text.split(/\r?\n/).map((line, i) =>
+        line.trim() ? (
+          <p key={i}>
+            {line}
+            {translations[i] && <span className="mb-2 block text-base font-medium leading-snug text-zinc-500 md:text-lg">{translations[i]}</span>}
+          </p>
+        ) : (
+          <br key={i} />
+        )
+      )}
+    </div>
+  );
+}
+
+/** Liga/desliga a tradução (pt-BR) abaixo de cada linha. */
+function TranslateButton({ on, state }) {
+  const same = state?.status === 'ready' && state.same;
+  const loading = on && state?.status === 'loading';
+  const label = same ? 'A letra já está em português' : on ? 'Esconder tradução' : 'Traduzir para português';
+  return (
+    <button
+      type="button"
+      onClick={() => useLyricsStore.getState().setTranslateOn(!on)}
+      disabled={same}
+      aria-pressed={on && !same}
+      className={`rounded-full bg-surface-700 p-2 transition hover:bg-surface-600 disabled:opacity-30 disabled:hover:bg-surface-700 ${
+        on && !same ? 'text-accent' : 'text-zinc-300 hover:text-white'
+      }`}
+      aria-label={label}
+      title={label}
+    >
+      {loading ? <Spinner /> : <TranslateIcon />}
+    </button>
   );
 }
 
@@ -87,6 +138,8 @@ export default function LyricsPanel() {
   const status = useLyricsStore((s) => s.status);
   const lyrics = useLyricsStore((s) => s.lyrics);
   const lyricsTrackId = useLyricsStore((s) => s.trackId);
+  const translateOn = useLyricsStore((s) => s.translateOn);
+  const translation = useLyricsStore((s) => s.translation[s.trackId]);
   const dancerOn = useDancerStore((s) => s.on);
   const track = usePlayerStore(selectCurrentTrack);
   const visible = open || dancerOn;
@@ -104,10 +157,20 @@ export default function LyricsPanel() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  // Faixa nova ainda não tocou: a letra só é buscada depois do play.
+  const pending = !track || lyricsTrackId !== track.id;
+  // Só faz sentido traduzir quando há texto (não instrumental, não "não encontrada").
+  const translatable = open && !pending && status === 'ready' && !lyrics?.instrumental && Boolean(lyricsLines(lyrics));
+
+  // A tradução só é buscada com o botão ligado (e uma vez por faixa).
+  useEffect(() => {
+    if (translatable && translateOn) useLyricsStore.getState().loadTranslation();
+  }, [translatable, translateOn, lyricsTrackId]);
+
   if (!visible || !track) return null;
 
-  // Faixa nova ainda não tocou: a letra só é buscada depois do play.
-  const pending = lyricsTrackId !== track.id;
+  const translations =
+    translatable && translateOn && translation?.status === 'ready' && !translation.same ? translation.lines : null;
   let body;
   if (pending || status === 'loading') {
     body = (
@@ -120,9 +183,9 @@ export default function LyricsPanel() {
   } else if (lyrics?.instrumental) {
     body = <Message>♪ Faixa instrumental ♪</Message>;
   } else if (lyrics?.synced) {
-    body = <SyncedLyrics lines={lyrics.synced} overlay={dancerOn} />;
+    body = <SyncedLyrics lines={lyrics.synced} overlay={dancerOn} translations={translations} />;
   } else if (lyrics?.plain) {
-    body = <p className="whitespace-pre-line py-8 text-xl font-semibold leading-relaxed text-zinc-200 md:text-2xl">{lyrics.plain}</p>;
+    body = <PlainLyrics text={lyrics.plain} translations={translations} />;
   } else {
     body = <Message>Letra não encontrada para esta faixa.</Message>;
   }
@@ -131,7 +194,15 @@ export default function LyricsPanel() {
   const lyricsBody = (
     <>
       {body}
-      {status === 'ready' && lyrics?.found && <p className="pb-6 text-xs text-zinc-600">Letra: {lyrics.source}</p>}
+      {status === 'ready' && lyrics?.found && (
+        <p className="pb-6 text-xs text-zinc-600">
+          Letra: {lyrics.source}
+          {translations && ' · Tradução: Google Tradutor'}
+          {translatable && translateOn && translation?.status === 'error' && (
+            <span className="text-red-400/80"> · {translation.message || 'Tradução indisponível.'}</span>
+          )}
+        </p>
+      )}
     </>
   );
 
@@ -146,6 +217,7 @@ export default function LyricsPanel() {
             <p className="truncate text-lg font-bold">{track.title}</p>
             <p className="truncate text-sm text-zinc-400">{track.artist}</p>
           </div>
+          {translatable && <TranslateButton on={translateOn} state={translation} />}
           <button
             type="button"
             onClick={close}

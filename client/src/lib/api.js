@@ -41,6 +41,11 @@ export function getLyrics(track, { signal } = {}) {
   return request(`/api/lyrics?${params}`, { signal });
 }
 
+/** Tradução (pt-BR) das linhas da letra: { lang, same, translations: string[] }. */
+export function translateLyrics(lines, { signal } = {}) {
+  return request('/api/lyrics/translation', { method: 'POST', body: { lines }, signal });
+}
+
 /* ---------------------------- playlists ---------------------------- */
 
 const pl = (id) => `/api/playlists/${encodeURIComponent(id)}`;
