@@ -88,7 +88,7 @@ function targetPose({ b, downbeat, energy, playing, t, beatLen }) {
   };
 }
 
-export default function Dancer({ className = '' }) {
+export default function Dancer({ className = 'items-center' }) {
   const track = usePlayerStore(selectCurrentTrack);
   const playing = usePlayerStore((s) => s.status === 'playing');
   const character = useDancerStore((s) => s.character);
@@ -149,7 +149,7 @@ export default function Dancer({ className = '' }) {
 
   const { name, Body } = DANCERS[character];
   return (
-    <div ref={rootRef} className={`relative flex items-center justify-center overflow-hidden ${className}`} style={REST_STYLE}>
+    <div ref={rootRef} className={`relative flex justify-center overflow-hidden ${className}`} style={REST_STYLE}>
       <svg viewBox="0 0 200 240" className="relative h-[60%] max-h-[280px] w-auto overflow-visible" role="img" aria-label={`${name} dançando`}>
         <defs>
           <radialGradient id="dancer-glow">

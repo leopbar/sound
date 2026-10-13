@@ -9,6 +9,10 @@ import { CloseIcon, Spinner } from './Icons';
 const LEAD_S = 0.3;
 // Depois que o usuário rola a letra, a rolagem automática espera um pouco antes de voltar.
 const MANUAL_SCROLL_PAUSE_MS = 4000;
+// Com o dançarino, a letra fica atrás dele: a linha atual para logo abaixo da metade de cima
+// (onde fica o personagem) e as já cantadas sobem por trás dele, quase invisíveis.
+const DANCER_AREA = 0.5;
+const DANCER_GAP_PX = 12;
 
 function activeIndex(lines, time) {
   let lo = 0;
@@ -24,7 +28,7 @@ function activeIndex(lines, time) {
   return found;
 }
 
-function SyncedLyrics({ lines, compact }) {
+function SyncedLyrics({ lines, overlay }) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const seek = usePlayerStore((s) => s.seek);
   const active = activeIndex(lines, currentTime);
@@ -34,13 +38,19 @@ function SyncedLyrics({ lines, compact }) {
   useEffect(() => {
     if (Date.now() < manualUntil.current) return;
     const el = listRef.current?.children[Math.max(active, 0)];
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [active]);
+    const scroller = listRef.current?.closest('[data-lyrics-scroll]');
+    if (!el || !scroller) return;
+    const offset = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    const target = overlay
+      ? scroller.clientHeight * DANCER_AREA + DANCER_GAP_PX
+      : (scroller.clientHeight - el.offsetHeight) / 2;
+    scroller.scrollTo({ top: scroller.scrollTop + offset - target, behavior: 'smooth' });
+  }, [active, overlay]);
 
   const pauseAuto = () => (manualUntil.current = Date.now() + MANUAL_SCROLL_PAUSE_MS);
 
   return (
-    <ol ref={listRef} onWheel={pauseAuto} onTouchMove={pauseAuto} className={`space-y-4 ${compact ? 'py-[12vh]' : 'py-[30vh]'}`}>
+    <ol ref={listRef} onWheel={pauseAuto} onTouchMove={pauseAuto} className={`space-y-4 ${overlay ? 'pb-[45cqh]' : 'py-[30vh]'}`}>
       {lines.map((line, i) => (
         <li key={`${line.time}-${i}`}>
           <button
@@ -50,7 +60,13 @@ function SyncedLyrics({ lines, compact }) {
               seek(line.time);
             }}
             className={`text-left text-2xl font-bold leading-snug transition-colors duration-300 md:text-3xl ${
-              i === active ? 'text-white' : i < active ? 'text-zinc-500 hover:text-zinc-300' : 'text-zinc-600 hover:text-zinc-300'
+              i === active
+                ? 'text-white'
+                : i > active
+                  ? 'text-zinc-600 hover:text-zinc-300'
+                  : overlay
+                    ? 'text-white/[.06] hover:text-white/40'
+                    : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
             {line.text || '♪'}
@@ -104,12 +120,20 @@ export default function LyricsPanel() {
   } else if (lyrics?.instrumental) {
     body = <Message>♪ Faixa instrumental ♪</Message>;
   } else if (lyrics?.synced) {
-    body = <SyncedLyrics lines={lyrics.synced} compact={dancerOn} />;
+    body = <SyncedLyrics lines={lyrics.synced} overlay={dancerOn} />;
   } else if (lyrics?.plain) {
     body = <p className="whitespace-pre-line py-8 text-xl font-semibold leading-relaxed text-zinc-200 md:text-2xl">{lyrics.plain}</p>;
   } else {
     body = <Message>Letra não encontrada para esta faixa.</Message>;
   }
+
+  const scrollClass = 'overflow-y-auto [mask-image:linear-gradient(transparent,#000_8%,#000_92%,transparent)]';
+  const lyricsBody = (
+    <>
+      {body}
+      {status === 'ready' && lyrics?.found && <p className="pb-6 text-xs text-zinc-600">Letra: {lyrics.source}</p>}
+    </>
+  );
 
   return (
     <section
@@ -132,16 +156,25 @@ export default function LyricsPanel() {
           </button>
         </div>
       </header>
-      {dancerOn && <Dancer className="min-h-0 flex-1" />}
-      {open && (
-        <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(transparent,#000_8%,#000_92%,transparent)]">
-          <div className="mx-auto max-w-3xl px-4">
-            {body}
-            {status === 'ready' && lyrics?.found && (
-              <p className="pb-6 text-xs text-zinc-600">Letra: {lyrics.source}</p>
-            )}
+      {open && dancerOn ? (
+        // Letra e dançarino: a letra ocupa a área toda e o personagem fica por cima, na metade de cima.
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div className={`absolute inset-0 ${scrollClass} [container-type:size]`} data-lyrics-scroll>
+            <div className="mx-auto max-w-3xl px-4 pt-[calc(50cqh+12px)]">{lyricsBody}</div>
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2">
+            <Dancer className="h-full items-end" />
           </div>
         </div>
+      ) : (
+        <>
+          {dancerOn && <Dancer className="min-h-0 flex-1 items-center" />}
+          {open && (
+            <div className={`relative min-h-0 flex-1 ${scrollClass}`} data-lyrics-scroll>
+              <div className="mx-auto max-w-3xl px-4">{lyricsBody}</div>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
