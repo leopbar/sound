@@ -46,6 +46,8 @@ export const playlistsApi = {
   addTrack: (id, track) => request(`${pl(id)}/tracks`, { method: 'POST', body: { track } }),
   removeTrack: (id, trackId) => request(`${pl(id)}/tracks/${encodeURIComponent(trackId)}`, { method: 'DELETE' }),
   reorder: (id, ids) => request(`${pl(id)}/order`, { method: 'PUT', body: { ids } }),
+  shuffle: (id) => request(`${pl(id)}/shuffle`, { method: 'POST', body: {} }),
+  restoreOrder: (id) => request(`${pl(id)}/restore-order`, { method: 'POST', body: {} }),
 };
 
 /** Admin: cadastro de usuários e senhas temporárias (troca obrigatória no próximo login). */

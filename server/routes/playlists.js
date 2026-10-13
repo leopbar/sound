@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const { pool, transaction } = require('../db');
 const { HttpError } = require('../lib/errors');
@@ -56,20 +57,48 @@ function cleanTrack(t) {
   };
 }
 
-const toJson = (row) => ({ id: row.id, name: row.name, tracks: row.tracks, createdAt: row.created_at, updatedAt: row.updated_at });
+const toJson = (row) => ({
+  id: row.id,
+  name: row.name,
+  tracks: row.tracks,
+  shuffled: row.original_order != null,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
 
-/** Lê a playlist com lock, aplica fn(tracks) e grava o resultado. */
-function mutateTracks(userId, id, fn) {
+/**
+ * Lê a playlist com lock e grava o que fn(row) devolver: { tracks, originalOrder }.
+ * `originalOrder` ausente mantém o valor atual; null limpa.
+ */
+function mutatePlaylist(userId, id, fn) {
   return transaction(async (db) => {
-    const { rows } = await db.query('SELECT tracks FROM playlist WHERE id = $1 AND user_id = $2 FOR UPDATE', [id, userId]);
+    const { rows } = await db.query(
+      'SELECT tracks, original_order FROM playlist WHERE id = $1 AND user_id = $2 FOR UPDATE',
+      [id, userId],
+    );
     if (!rows.length) throw notFound();
-    const tracks = fn(rows[0].tracks);
+    const { tracks, originalOrder = rows[0].original_order } = fn(rows[0]);
     const res = await db.query(
-      'UPDATE playlist SET tracks = $3, updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING *',
-      [id, userId, JSON.stringify(tracks)],
+      'UPDATE playlist SET tracks = $3, original_order = $4, updated_at = now() WHERE id = $1 AND user_id = $2 RETURNING *',
+      [id, userId, JSON.stringify(tracks), originalOrder == null ? null : JSON.stringify(originalOrder)],
     );
     return toJson(res.rows[0]);
   });
+}
+
+/** Lê a playlist com lock, aplica fn(tracks) e grava o resultado. */
+const mutateTracks = (userId, id, fn) => mutatePlaylist(userId, id, (row) => ({ tracks: fn(row.tracks) }));
+
+/** Fisher–Yates; com 2+ faixas garante que a ordem muda. */
+function shuffle(tracks) {
+  const out = [...tracks];
+  do {
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(i + 1);
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+  } while (out.length > 1 && out.every((t, i) => t.id === tracks[i].id));
+  return out;
 }
 
 async function insertPlaylist(db, userId, name, tracks) {
@@ -156,6 +185,28 @@ router.put('/:id/order', wrap(async (req, res) => {
       throw new HttpError(409, 'ORDER_CONFLICT', 'A playlist mudou. Recarregue e tente novamente.');
     }
     return ids.map((id) => byId.get(id));
+  }));
+}));
+
+/** Embaralha as faixas. A ordem anterior ao primeiro embaralhamento fica guardada para restaurar. */
+router.post('/:id/shuffle', wrap(async (req, res) => {
+  res.json(await mutatePlaylist(req.user.id, req.params.id, (row) => ({
+    tracks: shuffle(row.tracks),
+    originalOrder: row.original_order ?? row.tracks.map((t) => t.id),
+  })));
+}));
+
+/**
+ * Volta à ordem guardada antes de embaralhar. Faixas adicionadas depois vão para o fim
+ * (na ordem atual); as removidas nesse meio-tempo simplesmente não voltam.
+ */
+router.post('/:id/restore-order', wrap(async (req, res) => {
+  res.json(await mutatePlaylist(req.user.id, req.params.id, (row) => {
+    if (!Array.isArray(row.original_order)) return { tracks: row.tracks, originalOrder: null };
+    const rank = new Map(row.original_order.map((id, i) => [id, i]));
+    const known = row.tracks.filter((t) => rank.has(t.id)).sort((a, b) => rank.get(a.id) - rank.get(b.id));
+    const added = row.tracks.filter((t) => !rank.has(t.id));
+    return { tracks: [...known, ...added], originalOrder: null };
   }));
 }));
 

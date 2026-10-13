@@ -100,7 +100,7 @@ export default function PlayerBar() {
   const hasNext = index >= 0 && index < queueLength - 1;
 
   return (
-    <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-surface-600 bg-surface-800/95 backdrop-blur">
+    <footer data-player-bar className="fixed inset-x-0 bottom-0 z-20 border-t border-surface-600 bg-surface-800/95 backdrop-blur">
       <Notice />
       <div className="mx-auto grid h-20 max-w-screen-2xl grid-cols-[1fr_auto] items-center gap-4 px-4 md:grid-cols-[1fr_2fr_1fr]">
         {/* Faixa atual */}

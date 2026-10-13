@@ -37,6 +37,16 @@ export const usePlaylistStore = create((set, get) => {
     }
   }
 
+  async function replaceFromServer(id, call, fallback) {
+    try {
+      const updated = await call();
+      set({ playlists: get().playlists.map((p) => (p.id === id ? updated : p)) });
+    } catch (err) {
+      notify(err.message || fallback);
+      if (err.status !== 401) get().load();
+    }
+  }
+
   const mapOne = (id, fn) => (list) => list.map((p) => (p.id === id ? fn(p) : p));
 
   return {
@@ -102,6 +112,15 @@ export const usePlaylistStore = create((set, get) => {
       const tracks = [...p.tracks];
       tracks.splice(to, 0, tracks.splice(from, 1)[0]);
       optimistic(mapOne(id, (x) => ({ ...x, tracks })), () => playlistsApi.reorder(id, tracks.map((t) => t.id)));
+    },
+
+    /** Embaralhar/restaurar: a ordem é decidida no servidor, então espera a resposta. */
+    async shuffle(id) {
+      await replaceFromServer(id, () => playlistsApi.shuffle(id), 'Não foi possível embaralhar.');
+    },
+
+    async restoreOrder(id) {
+      await replaceFromServer(id, () => playlistsApi.restoreOrder(id), 'Não foi possível restaurar a ordem.');
     },
 
     removeTrack(id, trackId) {

@@ -20,6 +20,8 @@ async function migrate() {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS playlist_user_idx ON playlist (user_id, created_at);
+    -- Ordem (ids) antes do primeiro "embaralhar"; NULL quando a playlist não está embaralhada.
+    ALTER TABLE playlist ADD COLUMN IF NOT EXISTS original_order jsonb;
 
     -- Senha temporária criptografada, visível ao admin até o usuário definir a dele.
     CREATE TABLE IF NOT EXISTS temp_password (

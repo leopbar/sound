@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { usePlaylistStore } from '../store/playlistStore';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { formatTime } from '../lib/format';
+import { useSortable } from '../lib/useSortable';
 import Artwork from './Artwork';
-import { PlayIcon, PauseIcon, Spinner } from './Icons';
+import { PlayIcon, PauseIcon, ShuffleIcon, RestoreIcon, GripIcon, Spinner } from './Icons';
 
 function CreateForm() {
   const create = usePlaylistStore((s) => s.create);
@@ -35,13 +36,23 @@ function CreateForm() {
 }
 
 function PlaylistDetail({ playlist, onBack }) {
-  const { rename, remove, removeTrack, moveTrack } = usePlaylistStore.getState();
+  const { rename, remove, removeTrack, moveTrack, shuffle, restoreOrder } = usePlaylistStore.getState();
   const current = usePlayerStore(selectCurrentTrack);
   const status = usePlayerStore((s) => s.status);
   const failed = usePlayerStore((s) => s.failed);
   const { playQueue, toggle } = usePlayerStore.getState();
   const [name, setName] = useState(playlist.name);
-  const [drag, setDrag] = useState(null); // { from, over }
+  const [busy, setBusy] = useState(false);
+  const { drag, rowProps, handleProps } = useSortable({
+    count: playlist.tracks.length,
+    onMove: (from, to) => moveTrack(playlist.id, from, to),
+  });
+
+  const reorderAll = async (fn) => {
+    setBusy(true);
+    await fn(playlist.id);
+    setBusy(false);
+  };
 
   const onSelect = (track, i) => {
     if (current?.id === track.id) toggle();
@@ -73,6 +84,26 @@ function PlaylistDetail({ playlist, onBack }) {
         </button>
         <button
           type="button"
+          disabled={playlist.tracks.length < 2 || busy}
+          onClick={() => reorderAll(shuffle)}
+          title="Embaralhar a ordem das faixas"
+          className="flex items-center gap-1 rounded-full bg-surface-700 px-4 py-1.5 text-sm hover:bg-surface-600 disabled:opacity-40"
+        >
+          <ShuffleIcon className="h-4 w-4" /> Embaralhar
+        </button>
+        {playlist.shuffled && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => reorderAll(restoreOrder)}
+            title="Voltar à ordem de antes de embaralhar"
+            className="flex items-center gap-1 rounded-full bg-surface-700 px-4 py-1.5 text-sm hover:bg-surface-600 disabled:opacity-40"
+          >
+            <RestoreIcon className="h-4 w-4" /> Ordem original
+          </button>
+        )}
+        <button
+          type="button"
           onClick={() => {
             if (window.confirm(`Excluir a playlist “${playlist.name}”?`)) {
               remove(playlist.id);
@@ -88,84 +119,83 @@ function PlaylistDetail({ playlist, onBack }) {
       {!playlist.tracks.length ? (
         <p className="py-10 text-center text-zinc-400">Playlist vazia. Use o botão “+” nos resultados da busca para adicionar faixas.</p>
       ) : (
-        <ul className="divide-y divide-surface-700">
-          {playlist.tracks.map((track, i) => {
-            const active = current?.id === track.id;
-            const playing = active && status === 'playing';
-            const err = failed[track.id];
-            return (
-              <li
-                key={track.id}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.effectAllowed = 'move';
-                  setDrag({ from: i, over: i });
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (drag && drag.over !== i) setDrag({ ...drag, over: i });
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (drag) moveTrack(playlist.id, drag.from, i);
-                  setDrag(null);
-                }}
-                onDragEnd={() => setDrag(null)}
-                className={`flex items-center gap-3 py-2 ${err ? 'opacity-50' : ''} ${
-                  drag && drag.over === i && drag.from !== i ? 'bg-surface-700' : ''
-                } ${drag?.from === i ? 'opacity-40' : ''}`}
-              >
-                <button
-                  type="button"
-                  onClick={() => onSelect(track, i)}
-                  title={err || `${track.title} — ${track.artist}`}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-surface-800"
+        <>
+          <p className="mb-2 text-xs text-zinc-500">
+            Para mudar a ordem, segure uma faixa (ou a alça ⠿) e arraste.
+          </p>
+          <ul className="divide-y divide-surface-700">
+            {playlist.tracks.map((track, i) => {
+              const active = current?.id === track.id;
+              const playing = active && status === 'playing';
+              const err = failed[track.id];
+              return (
+                <li
+                  key={track.id}
+                  {...rowProps(i)}
+                  className={`flex touch-manipulation select-none items-center gap-1 py-2 [-webkit-touch-callout:none] sm:gap-3 ${
+                    err ? 'opacity-50' : ''
+                  } ${drag?.from === i ? 'rounded-lg bg-surface-700 shadow-xl shadow-black/50 ring-1 ring-accent/40' : ''}`}
                 >
-                  <span className="w-5 shrink-0 text-center text-xs text-zinc-500">
-                    {playing ? <PauseIcon className="mx-auto h-4 w-4 text-accent" /> : i + 1}
+                  <span
+                    {...handleProps(i)}
+                    aria-hidden="true"
+                    title="Arraste para reordenar"
+                    className="flex shrink-0 cursor-grab self-stretch items-center px-1.5 text-zinc-500 hover:text-white active:cursor-grabbing"
+                  >
+                    <GripIcon className="h-5 w-5" />
                   </span>
-                  <Artwork track={track} className="h-10 w-10 shrink-0 rounded" />
-                  <span className="min-w-0 flex-1">
-                    <span className={`block truncate text-sm font-semibold ${active ? 'text-accent' : ''}`}>{track.title}</span>
-                    <span className="block truncate text-xs text-zinc-400">{err || track.artist}</span>
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums text-zinc-500">{track.duration ? formatTime(track.duration) : ''}</span>
-                </button>
-                <span className="flex shrink-0 flex-col text-[10px] leading-none text-zinc-500">
                   <button
                     type="button"
-                    disabled={i === 0}
-                    onClick={() => moveTrack(playlist.id, i, i - 1)}
-                    aria-label={`Mover ${track.title} para cima`}
-                    title="Mover para cima"
-                    className="px-1.5 py-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500"
+                    onClick={() => onSelect(track, i)}
+                    title={err || `${track.title} — ${track.artist}`}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-surface-800"
                   >
-                    ▲
+                    <span className="w-5 shrink-0 text-center text-xs text-zinc-500">
+                      {playing ? <PauseIcon className="mx-auto h-4 w-4 text-accent" /> : i + 1}
+                    </span>
+                    <Artwork track={track} className="h-10 w-10 shrink-0 rounded" />
+                    <span className="min-w-0 flex-1">
+                      <span className={`block truncate text-sm font-semibold ${active ? 'text-accent' : ''}`}>{track.title}</span>
+                      <span className="block truncate text-xs text-zinc-400">{err || track.artist}</span>
+                    </span>
+                    <span className="shrink-0 text-xs tabular-nums text-zinc-500">{track.duration ? formatTime(track.duration) : ''}</span>
                   </button>
+                  <span className="hidden shrink-0 flex-col text-[10px] leading-none text-zinc-500 sm:flex">
+                    <button
+                      type="button"
+                      disabled={i === 0}
+                      onClick={() => moveTrack(playlist.id, i, i - 1)}
+                      aria-label={`Mover ${track.title} para cima`}
+                      title="Mover para cima"
+                      className="px-1.5 py-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      disabled={i === playlist.tracks.length - 1}
+                      onClick={() => moveTrack(playlist.id, i, i + 1)}
+                      aria-label={`Mover ${track.title} para baixo`}
+                      title="Mover para baixo"
+                      className="px-1.5 py-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500"
+                    >
+                      ▼
+                    </button>
+                  </span>
                   <button
                     type="button"
-                    disabled={i === playlist.tracks.length - 1}
-                    onClick={() => moveTrack(playlist.id, i, i + 1)}
-                    aria-label={`Mover ${track.title} para baixo`}
-                    title="Mover para baixo"
-                    className="px-1.5 py-0.5 hover:text-white disabled:opacity-20 disabled:hover:text-zinc-500"
+                    onClick={() => removeTrack(playlist.id, track.id)}
+                    aria-label={`Remover ${track.title} da playlist`}
+                    title="Remover da playlist"
+                    className="shrink-0 px-2 text-zinc-500 hover:text-red-400"
                   >
-                    ▼
+                    ✕
                   </button>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removeTrack(playlist.id, track.id)}
-                  aria-label={`Remover ${track.title} da playlist`}
-                  title="Remover da playlist"
-                  className="shrink-0 px-2 text-zinc-500 hover:text-red-400"
-                >
-                  ✕
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );

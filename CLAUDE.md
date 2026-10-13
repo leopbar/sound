@@ -54,6 +54,7 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
 | `client/src/components/AuthScreen.jsx` | Login, cadastro, passkey (inclui autofill condicional), social, esqueci/redefinir senha. |
 | `client/src/components/AccountView.jsx` | Perfil, passkeys, troca de senha, sessões ativas, excluir conta. |
 | `client/src/components/AdminView.jsx` | Painel admin (só aparece para `role === 'admin'`). |
+| `client/src/lib/useSortable.js` | Reordenação por arrasto **sem HTML5 drag-and-drop** (não funciona no toque): mouse arrasta a linha; toque = segurar ~350 ms ou arrastar pela alça (`touch-action: none`). `touchmove` não passivo bloqueia a rolagem durante o arrasto; rola sozinho perto das bordas/PlayerBar (`[data-player-bar]`). |
 | `client/src/store/playlistStore.js` | Playlists vindas do servidor, atualização otimista; em erro, **recarrega do servidor** (não restaura snapshot, por causa de corridas). Importa `localStorage['sound:playlists']` legado no 1º login. |
 
 ## Autenticação (Better Auth 1.7.x, self-hosted)
@@ -97,7 +98,7 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
 
 - Tabelas do Better Auth (camelCase, aspas obrigatórias: `"user"`, `"userId"`, `"createdAt"`…):
   `user`, `session`, `account`, `verification`, `passkey`.
-- Tabelas do app (snake_case): `playlist (id, user_id → user ON DELETE CASCADE, name 1..60, tracks jsonb, …)`
+- Tabelas do app (snake_case): `playlist (id, user_id → user ON DELETE CASCADE, name 1..60, tracks jsonb, original_order jsonb NULL, …)`
   e `temp_password (user_id PK → user CASCADE, ciphertext, created_at)`.
 - Migrações rodam automaticamente na subida do servidor; o log "Database schema mismatch" no
   primeiro boot é esperado (aparece antes da migração).
@@ -112,6 +113,9 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
    começar com `/api/stream/`; thumbnails só `http(s)`). Limites: 200 playlists/usuário, 1000 faixas/playlist.
 3. Mutação de faixas é feita em transação com `SELECT … FOR UPDATE` (`mutateTracks`).
    Reordenação recebe a lista completa de ids (`PUT /:id/order`) e valida que é uma permutação.
+   Embaralhar (`POST /:id/shuffle`, no servidor) guarda em `playlist.original_order` a ordem de antes
+   do 1º embaralhamento; `POST /:id/restore-order` volta a ela (faixas novas no fim) e zera a coluna.
+   O JSON da playlist expõe `shuffled` (botão "Ordem original").
 4. Busca e stream exigem sessão. Rotas novas: monte atrás de `requireAuth`.
 5. Rotas de admin novas: dentro de `routes/admin.js` (já checa o papel) ou endpoints do plugin.
 6. Nunca guarde token/sessão em `localStorage`. Respostas com senha usam `Cache-Control: no-store`.
