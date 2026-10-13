@@ -77,6 +77,9 @@ let handling = null; // evita tratar duas vezes a mesma falha (rejeição do pla
 let pauseIntent = null; // quem pediu a pausa em curso ('user' | 'lockscreen'); sem isso foi o sistema
 let generation = 0; // muda quando o usuário pausa ou troca de faixa: invalida tratamentos em andamento
 const warmed = new Set();
+// Erros "fonte/formato" (code 4) com a faixa boa no servidor, seguidos e com a tela acesa.
+// Um só não basta: um pedido que ficou travado com a tela apagada também termina em code 4.
+let formatErrors = { id: null, n: 0 };
 
 function clearRecovery() {
   if (!recovery) return;
@@ -293,6 +296,7 @@ export const usePlayerStore = create((set, get) => {
     /** O <audio> começou a sair som. */
     onPlaying() {
       stopStallWatch();
+      formatErrors = { id: null, n: 0 };
       set({ status: 'playing' });
       const track = current();
       if (recovery && track && recovery.id === track.id) {
@@ -364,8 +368,11 @@ export const usePlayerStore = create((set, get) => {
         set({ status: 'paused' });
         return;
       }
-      // Faixa boa no servidor, mas o navegador recusou o formato: uma nova tentativa e depois pula.
-      const formatRefused = probe.kind === 'ok' && code === 4 && recovery?.id === track.id && recovery.attempts > 0;
+      // Faixa boa no servidor, mas o navegador recusou o formato duas vezes seguidas: pula.
+      if (probe.kind === 'ok' && code === 4 && document.visibilityState === 'visible') {
+        formatErrors = formatErrors.id === track.id ? { id: track.id, n: formatErrors.n + 1 } : { id: track.id, n: 1 };
+      }
+      const formatRefused = formatErrors.id === track.id && formatErrors.n >= 2;
       if ((probe.kind === 'network' || probe.kind === 'ok') && !formatRefused) {
         get().recover(probe.kind === 'network' ? 'network' : `media${code}`);
         return;
