@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { engine } from '../lib/audioEngine';
 import { streamUrl, probeStream, warmStream } from '../lib/api';
 import { logEvent, clearPlayerLog } from '../lib/playerLog';
+import { cachedUrl, dropCached, prefetchTrack } from '../lib/trackCache';
 
 const VOLUME_KEY = 'sound:volume';
 const LOCK_SKIP_KEY = 'sound:lockSkip';
@@ -67,6 +68,8 @@ const RETRY_DELAYS = [1000, 2000, 4000, 8000, 15_000, 30_000];
 const OFFLINE_CHECK_MS = 30_000;
 // Carregando sem sair do lugar por este tempo (primeira carga ou travada no meio): recarrega.
 const STALL_MS = 30_000;
+// Baixa a próxima faixa para a memória quando a atual já está toda baixada ou falta pouco.
+const PREFETCH_REMAINING_S = 90;
 
 let recovery = null; // { id, attempts, since, timer, onOnline }
 let stallTimer = null;
@@ -186,7 +189,8 @@ export const usePlayerStore = create((set, get) => {
       });
       saveQueue();
       get().savePosition(true);
-      engine.load(streamUrl(track), startAt);
+      // Cópia local (baixada durante a faixa anterior): toca sem rede, mesmo com a tela apagada.
+      engine.load(cachedUrl(track.id) || streamUrl(track), startAt, track.id);
       watchStall(true);
       engine.play().catch((err) => get().handleError(err));
     },
@@ -199,7 +203,7 @@ export const usePlayerStore = create((set, get) => {
         return;
       }
       // App reaberto, erro ou desistência depois de quedas de rede: recarrega do ponto onde parou.
-      if (!engine.isReady(streamUrl(track))) {
+      if (!engine.isReady(track.id)) {
         get().playIndex(index, { startAt: get().resumeAt || get().currentTime });
         return;
       }
@@ -210,7 +214,7 @@ export const usePlayerStore = create((set, get) => {
     pause(via = 'user') {
       generation++;
       // Pausou no meio de uma recuperação: o próximo play recarrega do ponto salvo.
-      if (recovery) engine.url = '';
+      if (recovery) engine.trackId = null;
       clearRecovery();
       stopStallWatch();
       logEvent('pause', { reason: via, id: current()?.id, pos: position() });
@@ -255,7 +259,7 @@ export const usePlayerStore = create((set, get) => {
       if (!Number.isFinite(seconds)) return;
       const track = current();
       // Sem o <audio> pronto (app reaberto, recuperando): vale para quando ele recarregar.
-      if (track && engine.isReady(streamUrl(track))) engine.seek(seconds);
+      if (track && engine.isReady(track.id)) engine.seek(seconds);
       set({ currentTime: seconds, resumeAt: seconds });
     },
 
@@ -303,6 +307,26 @@ export const usePlayerStore = create((set, get) => {
         warmed.add(nextTrack.id);
         warmStream(nextTrack);
       }
+      get().maybePrefetchNext();
+    },
+
+    /**
+     * Durante a faixa (chamado no progress/timeupdate, que continuam com a tela apagada): baixa a
+     * próxima para a memória quando a atual já está toda baixada ou falta pouco para acabar.
+     */
+    maybePrefetchNext() {
+      const { queue, index, status } = get();
+      const nextTrack = queue[index + 1];
+      if (!nextTrack || status !== 'playing' || cachedUrl(nextTrack.id)) return;
+      const a = engine.audio;
+      if (!(a.duration > 0)) return;
+      const loaded = a.buffered.length > 0 && a.buffered.end(a.buffered.length - 1) >= a.duration - 1;
+      if (loaded || a.duration - a.currentTime < PREFETCH_REMAINING_S) prefetchTrack(nextTrack);
+    },
+
+    /** Tela acendeu: se está recuperando, tenta agora em vez de esperar o próximo intervalo. */
+    retryNow() {
+      recovery?.onOnline?.();
     },
 
     /* ------------------------ erros / recuperação ------------------------ */
@@ -323,6 +347,7 @@ export const usePlayerStore = create((set, get) => {
       }
 
       stopStallWatch();
+      dropCached(track.id); // se era a cópia local, a próxima tentativa vai pela rede
       const code = engine.audio.error?.code || 0; // 2 = rede, 3 = decodificação, 4 = fonte/formato
       const gen = generation;
       handling = track.id;
@@ -372,19 +397,23 @@ export const usePlayerStore = create((set, get) => {
         window.removeEventListener('online', recovery.onOnline);
       }
       // O <audio> pode estar adiantado em relação ao último timeupdate.
-      const t = Math.max(get().resumeAt, engine.url === streamUrl(track) ? engine.audio.currentTime || 0 : 0, get().currentTime);
+      const t = Math.max(get().resumeAt, engine.trackId === track.id ? engine.audio.currentTime || 0 : 0, get().currentTime);
       const offline = navigator.onLine === false;
-      const delay = offline ? OFFLINE_CHECK_MS : RETRY_DELAYS[recovery.attempts];
+      // Tela apagada: o Android pode estar segurando a rede até ela acender. Não desiste (fica no
+      // último intervalo) e tenta na hora em que a tela acende (retryNow).
+      const hidden = document.visibilityState === 'hidden';
+      const last = RETRY_DELAYS.length - 1;
+      const delay = offline ? OFFLINE_CHECK_MS : RETRY_DELAYS[hidden ? Math.min(recovery.attempts, last) : recovery.attempts];
 
       if (delay === undefined) {
         logEvent('gaveup', { id: track.id, pos: Math.round(t), why });
         clearRecovery();
         engine.pause();
-        engine.url = ''; // o próximo play recarrega do ponto salvo
+        engine.trackId = null; // o próximo play recarrega do ponto salvo
         set({ status: 'paused', resumeAt: t, notice: { id: Date.now(), text: 'Sem conexão estável. Toque ▶ para continuar de onde parou.' } });
         return;
       }
-      if (!offline) recovery.attempts++;
+      if (!offline && !(hidden && recovery.attempts > last)) recovery.attempts++;
       logEvent('retry', { id: track.id, why, n: recovery.attempts, pos: Math.round(t) });
       set({
         status: offline ? 'offline' : 'loading',

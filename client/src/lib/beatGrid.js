@@ -1,4 +1,5 @@
 import { streamUrl } from './api';
+import { cachedBlob } from './trackCache';
 
 /**
  * Grade de batidas da faixa inteira (para o dançarino).
@@ -120,9 +121,17 @@ export function cancelBeatGrid() {
 }
 
 async function analyze(track, signal) {
-  const res = await fetch(streamUrl(track), { credentials: 'include', signal });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const samples = await decodeMono(await res.arrayBuffer());
+  // Faixa já baixada para a memória (próxima da fila): sem segundo download.
+  let buffer;
+  const blob = cachedBlob(track.id);
+  if (blob) {
+    buffer = await blob.arrayBuffer();
+  } else {
+    const res = await fetch(streamUrl(track), { credentials: 'include', signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    buffer = await res.arrayBuffer();
+  }
+  const samples = await decodeMono(buffer);
   signal?.throwIfAborted();
 
   const grid = await new Promise((resolve, reject) => {

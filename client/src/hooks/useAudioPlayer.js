@@ -4,6 +4,18 @@ import { appPath } from '../lib/base';
 import { logEvent } from '../lib/playerLog';
 import { usePlayerStore, selectCurrentTrack, watchStall, stopStallWatch, takePauseIntent } from '../store/playerStore';
 
+/** Barra de progresso na tela de bloqueio / notificação (posição real do <audio>). */
+function syncPosition() {
+  const a = engine.audio;
+  const ms = 'mediaSession' in navigator ? navigator.mediaSession : null;
+  if (!ms?.setPositionState || !Number.isFinite(a.duration) || a.duration <= 0) return;
+  try {
+    ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: a.playbackRate });
+  } catch {
+    /* estado inválido durante troca de faixa */
+  }
+}
+
 /**
  * Conecta o <audio> (engine) ao store: eventos de mídia -> estado React, fim da faixa -> próxima,
  * erros -> recuperação/fallback, Media Session e atalhos de teclado. Restaura a fila salva do
@@ -23,15 +35,6 @@ export function useAudioPlayer(userId) {
     engine.setVolume(store.getState().volume);
 
     const ms = 'mediaSession' in navigator ? navigator.mediaSession : null;
-    // Barra de progresso na tela de bloqueio / notificação.
-    const syncPosition = () => {
-      if (!ms?.setPositionState || !Number.isFinite(a.duration) || a.duration <= 0) return;
-      try {
-        ms.setPositionState({ duration: a.duration, position: Math.min(a.currentTime, a.duration), playbackRate: a.playbackRate });
-      } catch {
-        /* estado inválido durante troca de faixa */
-      }
-    };
 
     const handlers = {
       waiting: () => {
@@ -65,9 +68,11 @@ export function useAudioPlayer(userId) {
         if (a.readyState === 0) return; // troca de src zera o tempo antes de carregar
         store.setState({ currentTime: a.currentTime });
         store.getState().savePosition();
+        store.getState().maybePrefetchNext();
       },
       progress: () => {
         if (a.buffered.length) store.setState({ buffered: a.buffered.end(a.buffered.length - 1) });
+        store.getState().maybePrefetchNext();
       },
       ended: () => store.getState().onEnded(),
       error: () => {
@@ -84,6 +89,7 @@ export function useAudioPlayer(userId) {
       if (!current) return;
       logEvent(document.visibilityState === 'hidden' ? 'hidden' : 'visible', { st: s.status, pos: Math.round(s.currentTime) });
       if (document.visibilityState === 'hidden') s.savePosition(true);
+      else s.retryNow();
     };
     const onPageHide = () => store.getState().savePosition(true);
 
@@ -100,6 +106,8 @@ export function useAudioPlayer(userId) {
   // Media Session: controles na tela de bloqueio/notificação, fone Bluetooth e teclas de mídia.
   // Pular faixa e arrastar a barra só com a opção ligada (Conta → Reprodução): esbarrões no bolso
   // trocavam de música. O Android usa as mesmas ações para a tela de bloqueio e para o fone.
+  // Arrastar precisa de um handler que ignora o gesto: sem handler, o Chrome faz o seek sozinho.
+  // (Não registre seekforward/seekbackward: o Android passaria a mostrar botões de ±10 s.)
   useEffect(() => {
     if (!('mediaSession' in navigator) || !track) return;
     const { play, pause, next, prev, seek } = usePlayerStore.getState();
@@ -116,7 +124,11 @@ export function useAudioPlayer(userId) {
       pause: () => pause('lockscreen'),
       nexttrack: lockSkip ? () => next('lockscreen') : null,
       previoustrack: lockSkip ? () => prev('lockscreen') : null,
-      seekto: lockSkip ? (d) => seek(d.seekTime) : null,
+      seekto: (d) => {
+        logEvent('seek', { via: 'lockscreen', to: Math.round(d.seekTime), done: lockSkip ? 1 : 0 });
+        if (lockSkip) seek(d.seekTime);
+        else syncPosition(); // devolve a barra à posição real
+      },
     };
     for (const [k, fn] of Object.entries(actions)) {
       try {
