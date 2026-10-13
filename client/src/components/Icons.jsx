@@ -70,6 +70,16 @@ export const DancerIcon = (p) => (
     <circle cx="13" cy="4" r="2" /><path d="M5 9l4-1 4 2 5-3M13 10l-1 5 4 3 1 4M12 15l-4 2-2 5" />
   </svg>
 );
+export const PlusIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+export const CheckIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...p}>
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </svg>
+);
 export const CloseIcon = (p) => (
   <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}>
     <path d="M6 6l12 12M18 6 6 18" />

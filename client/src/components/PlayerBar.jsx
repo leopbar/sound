@@ -6,6 +6,7 @@ import { formatTime, SOURCE_LABEL } from '../lib/format';
 import Artwork from './Artwork';
 import Visualizer from './Visualizer';
 import LyricsPanel from './LyricsPanel';
+import AddToPlaylist from './AddToPlaylist';
 import { PlayIcon, PauseIcon, NextIcon, PrevIcon, VolumeIcon, LyricsIcon, DancerIcon, Spinner } from './Icons';
 
 function Seekbar() {
@@ -161,6 +162,7 @@ export default function PlayerBar() {
                   via {SOURCE_LABEL[track.source] || track.source}
                 </p>
               </div>
+              <AddToPlaylist track={track} variant="bar" />
             </>
           ) : (
             <p className="text-sm text-zinc-500">Nada tocando</p>
