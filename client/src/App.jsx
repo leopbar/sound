@@ -7,6 +7,7 @@ import AuthScreen from './components/AuthScreen';
 import AccountView from './components/AccountView';
 import AdminView from './components/AdminView';
 import ForcePasswordChange from './components/ForcePasswordChange';
+import InstallButton from './components/InstallButton';
 import { Spinner } from './components/Icons';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useSearchStore } from './store/searchStore';
@@ -52,7 +53,8 @@ function Player({ session, config }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-surface-700 via-surface-900 to-surface-900 pb-36 md:pb-28">
-      <nav className="mx-auto flex max-w-screen-2xl justify-end gap-2 px-4 pt-4 text-sm">
+      <nav className="mx-auto flex max-w-screen-2xl flex-wrap justify-end gap-2 px-4 pt-4 text-sm">
+        <InstallButton />
         {[
           ['search', 'Buscar'],
           ['playlists', 'Playlists'],

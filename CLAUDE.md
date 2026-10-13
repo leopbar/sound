@@ -55,7 +55,22 @@ Navegador ──▶ Caddy (só no VPS, perfil "https", TLS automático)
 | `client/src/components/AccountView.jsx` | Perfil, passkeys, troca de senha, sessões ativas, excluir conta. |
 | `client/src/components/AdminView.jsx` | Painel admin (só aparece para `role === 'admin'`). |
 | `client/src/lib/useSortable.js` | Reordenação por arrasto **sem HTML5 drag-and-drop** (não funciona no toque): mouse arrasta a linha; toque = segurar ~350 ms ou arrastar pela alça (`touch-action: none`). `touchmove` não passivo bloqueia a rolagem durante o arrasto; rola sozinho perto das bordas/PlayerBar (`[data-player-bar]`). |
+| `client/src/lib/pwa.js` | Instalação como app: captura `beforeinstallprompt` cedo (store Zustand), detecta iOS/standalone, registra `/sw.js` (só em produção). Botão em `components/InstallButton.jsx` (nav; no iOS mostra instruções). |
 | `client/src/store/playlistStore.js` | Playlists vindas do servidor, atualização otimista; em erro, **recarrega do servidor** (não restaura snapshot, por causa de corridas). Importa `localStorage['sound:playlists']` legado no 1º login. |
+
+## PWA (instalável no celular)
+
+- `client/public/manifest.webmanifest` + ícones em `client/public/icons/` (gerados por
+  `client/scripts/gen-icons.mjs` a partir de um SVG único: `npm i --no-save sharp && node scripts/gen-icons.mjs`).
+- `client/public/sw.js`: cacheia só o casco (navegação rede-primeiro → `/` offline; `/assets/` e
+  `/icons/` cache-primeiro). **Nunca intercepte `/api/`** (sessão, playlists e áudio precisam ir
+  sempre ao servidor). Ao mudar a estratégia, troque o nome do cache (`sound-shell-vN`).
+- nginx: `location = /manifest.webmanifest` define o MIME (o nginx não conhece `.webmanifest`);
+  `sw.js` sai com `no-cache` pelo `location /`.
+- Instalação só funciona em HTTPS (ou `localhost`); por IP da rede local o Chrome não oferece.
+- O painel de navegador interno do app Claude (Electron) não registra service worker; para testar
+  use Chrome de verdade (headless via `puppeteer-core` + `Page.getInstallabilityErrors`).
+- Tela de bloqueio: `useAudioPlayer` alimenta a Media Session (metadados, play/pause, posição).
 
 ## Autenticação (Better Auth 1.7.x, self-hosted)
 
