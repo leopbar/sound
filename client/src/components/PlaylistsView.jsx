@@ -64,16 +64,17 @@ function PlaylistDetail({ playlist, onBack }) {
       <button type="button" onClick={onBack} className="mb-4 text-sm text-zinc-400 hover:text-white">
         ← Playlists
       </button>
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => (name.trim() ? rename(playlist.id, name) : setName(playlist.name))}
-          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-          maxLength={60}
-          aria-label="Nome da playlist"
-          className="min-w-0 flex-1 rounded bg-transparent text-2xl font-bold outline-none focus:bg-surface-700 focus:px-2"
-        />
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => (name.trim() ? rename(playlist.id, name) : setName(playlist.name))}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        maxLength={60}
+        aria-label="Nome da playlist"
+        title={name}
+        className="mb-3 block w-full min-w-0 truncate rounded bg-transparent text-2xl font-bold outline-none focus:bg-surface-700 focus:px-2"
+      />
+      <div className="mb-6 flex flex-wrap items-center gap-2 sm:gap-3">
         <button
           type="button"
           disabled={!playlist.tracks.length}
