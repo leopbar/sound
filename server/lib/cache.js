@@ -2,8 +2,7 @@ const NodeCache = require('node-cache');
 
 // TTLs em segundos
 const TTL = {
-  METADATA: 60 * 60, // MusicBrainz: 1h (requisito)
-  YOUTUBE: 60 * 60 * 24, // mapeamento recording -> vídeo: 24h
+  METADATA: 60 * 60, // resultados de busca: 1h
   STREAM_INFO: 60 * 60 * 4, // URLs do googlevideo expiram em ~6h
 };
 

@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 // Node 20+ usa "Happy Eyeballs": cada tentativa de conexão (IPv4/IPv6) tem 250ms por
-// padrão. Com servidores distantes (MusicBrainz fica na Alemanha, ~200-330ms daqui) e
+// padrão. Com servidores distantes (LRCLIB, Jamendo etc.) e
 // containers sem IPv6, a tentativa IPv4 é abortada e a conexão falha com ETIMEDOUT.
 net.setDefaultAutoSelectFamilyAttemptTimeout(Number(process.env.NET_FAMILY_TIMEOUT_MS) || 2000);
 const { toNodeHandler } = require('better-auth/node');

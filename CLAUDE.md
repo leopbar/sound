@@ -9,8 +9,9 @@ comentários e README são em português. Mensagens de commit em inglês.
 
 ## O que é
 
-Player de música: busca gravações (MusicBrainz) e toca o áudio via proxy (YouTube → fallback
-Jamendo / Internet Archive). Desde o commit `143441b` tem **login obrigatório**, **playlists
+Player de música: busca vídeos no YouTube e toca o áudio via proxy. A busca no catálogo MusicBrainz
+(aba "Gravações") foi **removida** por trazer versões erradas; faixas antigas dela (`kind: 'recording'`,
+e de Jamendo/Internet Archive) salvas em playlists continuam tocando pelo `/api/stream`. Desde o commit `143441b` tem **login obrigatório**, **playlists
 por usuário no PostgreSQL** e **painel de administração**. Está publicado num
 VPS (Docker Compose num subcaminho, atrás do nginx do servidor; ver "Ambiente").
 
@@ -52,8 +53,9 @@ O app roda na raiz (local, `:8088`) **ou** num subcaminho (ex.: `https://seudomi
 | `server/migrate.js` | Roda na subida: `getMigrations` do Better Auth + `CREATE TABLE IF NOT EXISTS` das tabelas do app. Também roda isolado (`node migrate.js`). |
 | `server/middleware/requireAuth.js` | Sessão obrigatória; 403 `PASSWORD_CHANGE_REQUIRED` se senha temporária. Popula `req.user`/`req.session`. |
 | `server/routes/api.js` | `/api/health` público; **tudo abaixo de `router.use(requireAuth)`** (busca e stream). |
-| `server/services/lyrics.js` | Letras via LRCLIB (sem chave): `/api/get` exato (com duração) → `/api/search` com pontuação. O `/get` responde **503** quando não acha: tratado como "sem correspondência". Limpa título/canal de faixas da aba YouTube (`kind=video`). Cache 24h (inclusive "não encontrada"). Rota `GET /api/lyrics` (atrás do `requireAuth`). |
-| `server/services/translate.js` | Tradução das letras para pt-BR pelo endpoint público do Google Tradutor (`translate_a/single?client=gtx`, sem chave, POST). Traduz a letra inteira numa chamada (o Google preserva as quebras de linha; se a contagem não bater, traduz linha a linha). Blocos de até 4000 caracteres, cache 7 dias por hash do texto, retentativas em 429/5xx. **Não use `config.userAgent`** (o UA do MusicBrainz leva 429 e mandaria o contato ao Google). Letra já em português ⇒ `same: true`. Rota `POST /api/lyrics/translation` `{ lines }` (atrás do `requireAuth`). |
+| `server/services/lyrics.js` | Letras via LRCLIB (sem chave): `/api/get` exato (com duração) → `/api/search` com pontuação. O `/get` responde **503** quando não acha: tratado como "sem correspondência". Limpa título/canal de faixas do YouTube (`kind=video`). Cache 24h (inclusive "não encontrada"). Rota `GET /api/lyrics` (atrás do `requireAuth`). |
+| `server/services/translate.js` | Tradução das letras para pt-BR pelo endpoint público do Google Tradutor (`translate_a/single?client=gtx`, sem chave, POST). Traduz a letra inteira numa chamada (o Google preserva as quebras de linha; se a contagem não bater, traduz linha a linha). Blocos de até 4000 caracteres, cache 7 dias por hash do texto, retentativas em 429/5xx. **Não use `config.userAgent`** (o UA do app, `MB_USER_AGENT`, leva 429 e mandaria o contato ao Google). Letra já em português ⇒ `same: true`. Rota `POST /api/lyrics/translation` `{ lines }` (atrás do `requireAuth`). |
+| `server/services/musicService.js` | Busca (`GET /api/search`, alias antigo `/api/search/youtube`): vídeos do YouTube na ordem dele, filtrando < 30 s e > 20 min. Cache 1h. |
 | `server/services/streamService.js` | Proxy de áudio (YouTube via ytdl-core → yt-dlp; Jamendo/Archive). Toda resposta do axios em stream passa por `keepOpen()`: o follow-redirects deixa um timeout de inatividade no socket que **cortava a música** quando o `<audio>` parava de ler (buffer cheio, tela bloqueada). Queda no meio do download **não** invalida a URL em cache (só falha antes dos cabeçalhos). Não use a URL remota como id em erro/log (a do Jamendo pode levar a chave). |
 | `server/routes/api.js` → `POST /api/client-log` | Diário do player enviado pelo aparelho (pausas com motivo, erros, quedas de rede, retomadas, tela bloqueada). Só imprime `[client] u=<8 chars do id> <data> <evento> chave=valor` no log (lista fechada de eventos, valores saneados, repetidos descartados). Para diagnosticar o celular: `docker compose logs server \| grep '\[client\]'`. |
 | `server/routes/playlists.js` | CRUD de playlists do usuário logado. |

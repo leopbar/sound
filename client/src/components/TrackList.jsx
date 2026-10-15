@@ -1,14 +1,10 @@
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
-import { formatTime, formatViews, SOURCE_LABEL } from '../lib/format';
+import { formatTime, formatViews } from '../lib/format';
 import Artwork from './Artwork';
 import AddToPlaylist from './AddToPlaylist';
 import { PlayIcon, PauseIcon, Spinner } from './Icons';
 
-const GRID = {
-  recording: 'grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
-  video: 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
-};
-const ASPECT = { recording: 'aspect-square', video: 'aspect-video' };
+const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
 function Equalizer() {
   return (
@@ -24,12 +20,12 @@ function Equalizer() {
   );
 }
 
-function SkeletonGrid({ variant, count }) {
+function SkeletonGrid({ count }) {
   return (
-    <div className={GRID[variant]}>
+    <div className={GRID}>
       {Array.from({ length: count }, (_, i) => (
         <div key={i} className="animate-pulse rounded-xl bg-surface-800 p-3">
-          <div className={`${ASPECT[variant]} rounded-lg bg-surface-700`} />
+          <div className="aspect-video rounded-lg bg-surface-700" />
           <div className="mt-3 h-4 w-3/4 rounded bg-surface-700" />
           <div className="mt-2 h-3 w-1/2 rounded bg-surface-700" />
         </div>
@@ -38,12 +34,9 @@ function SkeletonGrid({ variant, count }) {
   );
 }
 
-/** Linha inferior do card: álbum (gravação) ou views (vídeo), e a duração. */
-function Meta({ track, variant, error }) {
-  let left;
-  if (error) left = 'Indisponível';
-  else if (variant === 'video') left = track.views ? `${formatViews(track.views)} visualizações` : '';
-  else left = track.album || '—';
+/** Linha inferior do card: views e duração. */
+function Meta({ track, error }) {
+  const left = error ? 'Indisponível' : track.views ? `${formatViews(track.views)} visualizações` : '';
   return (
     <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-500">
       <span className="truncate pr-2">{left}</span>
@@ -53,16 +46,16 @@ function Meta({ track, variant, error }) {
 }
 
 /**
- * Grid de faixas. `variant`: 'recording' (capa de álbum, quadrada) ou 'video'
- * (thumbnail 16:9, canal e views). Clicar toca a faixa usando `tracks` como fila.
+ * Grid de resultados da busca (vídeos do YouTube: thumbnail 16:9, canal e views).
+ * Clicar toca a faixa usando `tracks` como fila.
  */
-export default function TrackList({ tracks, variant = 'recording', loading, error, emptyText, skeleton = 10 }) {
+export default function TrackList({ tracks, loading, error, emptyText, skeleton = 8 }) {
   const current = usePlayerStore(selectCurrentTrack);
   const status = usePlayerStore((s) => s.status);
   const failed = usePlayerStore((s) => s.failed);
   const { playQueue, toggle } = usePlayerStore.getState();
 
-  if (loading) return <SkeletonGrid variant={variant} count={skeleton} />;
+  if (loading) return <SkeletonGrid count={skeleton} />;
   if (error) return <p className="py-10 text-center text-red-400">{error}</p>;
   if (!tracks.length) return emptyText ? <p className="py-10 text-center text-zinc-400">{emptyText}</p> : null;
 
@@ -72,7 +65,7 @@ export default function TrackList({ tracks, variant = 'recording', loading, erro
   };
 
   return (
-    <ul className={GRID[variant]}>
+    <ul className={GRID}>
       {tracks.map((track, i) => {
         const active = current?.id === track.id;
         const playing = active && status === 'playing';
@@ -89,7 +82,7 @@ export default function TrackList({ tracks, variant = 'recording', loading, erro
               } ${err ? 'opacity-50' : ''}`}
             >
               <div className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40">
-                <Artwork track={track} className={`${ASPECT[variant]} w-full`} />
+                <Artwork track={track} className="aspect-video w-full" />
                 <span
                   className={`absolute bottom-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-accent text-black shadow-xl transition ${
                     active ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100'
@@ -100,24 +93,12 @@ export default function TrackList({ tracks, variant = 'recording', loading, erro
               </div>
               <div className="mt-3 flex items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <p
-                    className={`text-sm font-semibold ${active ? 'text-accent' : ''} ${
-                      variant === 'video' ? 'line-clamp-2' : 'truncate'
-                    }`}
-                  >
-                    {track.title}
-                  </p>
+                  <p className={`line-clamp-2 text-sm font-semibold ${active ? 'text-accent' : ''}`}>{track.title}</p>
                   <p className="truncate text-xs text-zinc-400">{track.artist}</p>
-                  {track.version && <p className="truncate text-[11px] italic text-zinc-500">{track.version}</p>}
                 </div>
                 {playing && <Equalizer />}
               </div>
-              <Meta track={track} variant={variant} error={err} />
-              {track.source !== 'youtube' && (
-                <span className="absolute left-5 top-5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-zinc-200">
-                  {SOURCE_LABEL[track.source]}
-                </span>
-              )}
+              <Meta track={track} error={err} />
             </button>
           </li>
         );

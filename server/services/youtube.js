@@ -1,9 +1,7 @@
 const axios = require('axios');
 const config = require('../config');
 const { remember, TTL } = require('../lib/cache');
-const { normalize, tokenCoverage, parseIsoDuration, parseClock } = require('../lib/text');
-
-const NEGATIVE = ['live', 'cover', 'karaoke', 'instrumental', 'reaction', 'remix', 'lyrics', 'tutorial', 'lesson', 'slowed', 'reverb', 'nightcore', '8d', 'sped up', 'piano', 'guitar'];
+const { parseIsoDuration, parseClock } = require('../lib/text');
 
 // Se a cota da Data API acabar, usamos a busca interna até esse instante.
 let apiDisabledUntil = 0;
@@ -120,59 +118,6 @@ async function searchVideos(q, { limit = 10 } = {}) {
   return searchViaScrape(q, limit);
 }
 
-/* ------------------------------------------------------------------ */
-/* Casamento gravação MusicBrainz <-> vídeo                            */
-/* ------------------------------------------------------------------ */
-
-function scoreCandidate(track, v) {
-  const title = normalize(v.title);
-  const channel = normalize(v.channel);
-  const wanted = normalize(`${track.title} ${track.album || ''} ${track.version || ''}`);
-  let s = 0;
-
-  s += 40 * tokenCoverage(track.title, v.title);
-  s += 25 * Math.max(tokenCoverage(track.artist, v.title), tokenCoverage(track.artist, v.channel));
-  if (channel.endsWith(' topic')) s += 20; // canais "Artista - Topic" = áudio de estúdio oficial
-  if (/\bofficial\b/.test(title)) s += 8;
-  if (/\bvevo\b/.test(channel)) s += 8;
-
-  for (const word of NEGATIVE) {
-    if (new RegExp(`\\b${word}\\b`).test(title) && !wanted.includes(word)) s -= 25;
-  }
-
-  if (track.duration && v.duration) {
-    const diff = Math.abs(track.duration - v.duration);
-    if (diff <= 3) s += 25;
-    else if (diff <= 10) s += 15;
-    else if (diff > 30) s -= Math.min(60, diff / 2); // clipes com intro longa, compilações etc.
-  }
-  return s;
-}
-
-const MIN_SCORE = 35;
-// Candidatos até esta distância do melhor score são considerados "equivalentes";
-// entre eles vence o mais assistido. Penalidades (ao vivo, cover, duração errada)
-// valem 25+ pontos, então versões erradas ficam fora da janela.
-const POPULARITY_WINDOW = 15;
-
-/** Encontra o melhor vídeo para uma gravação. Resultado em cache por 24h. */
-async function findVideoForTrack(track) {
-  const key = `yt:match:${track.mbid || normalize(`${track.artist} ${track.title}`)}`;
-  return remember(key, TTL.YOUTUBE, async () => {
-    const live = /\blive\b/i.test(track.version || '') ? ' live' : '';
-    const candidates = await searchVideos(`${track.artist} - ${track.title}${live} audio`);
-    const scored = candidates
-      .map((v) => ({ ...v, score: scoreCandidate(track, v) }))
-      .sort((a, b) => b.score - a.score);
-    const top = scored[0]?.score;
-    if (top === undefined || top < MIN_SCORE) return null;
-    const floor = Math.max(MIN_SCORE, top - POPULARITY_WINDOW);
-    return scored
-      .filter((v) => v.score >= floor)
-      .reduce((best, v) => ((v.views || 0) > (best.views || 0) ? v : best));
-  });
-}
-
 function decodeEntities(s = '') {
   return s
     .replace(/&amp;/g, '&')
@@ -182,4 +127,4 @@ function decodeEntities(s = '') {
     .replace(/&gt;/g, '>');
 }
 
-module.exports = { findVideoForTrack, searchVideos };
+module.exports = { searchVideos };

@@ -33,11 +33,9 @@ function searchRoute(searchFn) {
   });
 }
 
-// Gravações: MusicBrainz -> YouTube/Jamendo/Internet Archive.
-router.get('/search', rateLimit({ windowMs: 60_000, max: 30 }), searchRoute(musicService.search));
-
-// Vídeos na ordem do próprio YouTube (aba "YouTube").
-router.get('/search/youtube', rateLimit({ windowMs: 60_000, max: 30 }), searchRoute(musicService.searchYouTube));
+// Vídeos na ordem do próprio YouTube.
+// '/search/youtube' é o caminho antigo (apps com a versão anterior ainda em cache).
+router.get(['/search', '/search/youtube'], rateLimit({ windowMs: 60_000, max: 30 }), searchRoute(musicService.searchYouTube));
 
 // Letra da faixa que está tocando (LRCLIB).
 router.get('/lyrics', rateLimit({ windowMs: 60_000, max: 60 }), wrap(async (req, res) => {

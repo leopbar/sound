@@ -14,7 +14,7 @@ const CHUNK_CHARS = 4000; // a requisição vai no corpo, mas o Google recusa te
 const http = axios.create({
   baseURL: 'https://translate.googleapis.com',
   timeout: 10000,
-  // O UA do app (exigido pelo MusicBrainz) leva 429 aqui, e não convém mandar o contato ao Google.
+  // O UA do app (MB_USER_AGENT, com contato) leva 429 aqui, e não convém mandar o contato ao Google.
   headers: {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
   },

@@ -26,11 +26,8 @@ async function getResults(path, query, signal) {
   return body.results || [];
 }
 
-/** Gravações (MusicBrainz -> fonte de áudio). */
-export const searchTracks = (query, { signal } = {}) => getResults('/api/search', query, signal);
-
-/** Vídeos na ordem do próprio YouTube. */
-export const searchVideos = (query, { signal } = {}) => getResults('/api/search/youtube', query, signal);
+/** Busca: vídeos do YouTube, na ordem do próprio YouTube. */
+export const searchVideos = (query, { signal } = {}) => getResults('/api/search', query, signal);
 
 /** Letra (LRCLIB) da faixa: { found, instrumental, synced: [{ time, text }] | null, plain }. */
 export function getLyrics(track, { signal } = {}) {

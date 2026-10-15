@@ -1,14 +1,13 @@
 # Sound — Music Discovery & Streaming Player
 
-Busque qualquer gravação do mundo e ouça na hora. Metadados vêm da **MusicBrainz**, o áudio do **YouTube** (via proxy) e, como reserva, do **Jamendo** e do **Internet Archive**.
+Busque qualquer música e ouça na hora. A busca e o áudio vêm do **YouTube** (via proxy); faixas antigas do **Jamendo** e do **Internet Archive** salvas em playlists continuam tocando.
 
 ```
 React (Vite + Tailwind + Zustand)  ──/api──▶  nginx  ──▶  Express
                                                           ├─ /api/auth      (Better Auth: sessões, passkeys, OAuth)
                                                           ├─ /api/playlists (por usuário, PostgreSQL)
-                                                          ├─ MusicBrainz  (metadados, fila 1 req/s, cache 1h)
                                                           ├─ YouTube      (busca: Data API v3 ou busca interna)
-                                                          ├─ Jamendo / Internet Archive (fallback)
+                                                          ├─ Jamendo / Internet Archive (só stream de faixas já salvas)
                                                           └─ /api/stream  (ytdl-core → yt-dlp, HTTP Range)
 ```
 
@@ -143,11 +142,10 @@ docker compose -f docker-compose.dev.yml up
 | `SMTP_URL` / `MAIL_FROM` | Recomendado em produção: verificação de e-mail e recuperação de senha. |
 | `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET` | Opcional: login social. |
 | `SIGNUP_ENABLED` | `false` fecha o cadastro público. |
-| `MB_USER_AGENT` | **Recomendado.** A MusicBrainz exige identificação (`App/versão ( contato )`); UAs genéricos recebem 503 com mais frequência. |
+| `MB_USER_AGENT` | Recomendado. User-Agent (`App/versão ( contato )`) enviado ao LRCLIB (letras). |
 | `YOUTUBE_API_KEY` | Opcional. Busca via Data API v3 (mais precisa). Sem chave — ou com a cota esgotada — usa a busca interna (parse do `ytInitialData`). |
-| `JAMENDO_CLIENT_ID` | Opcional. Habilita o fallback Jamendo. |
+| `JAMENDO_CLIENT_ID` | Opcional. Necessário só para tocar faixas do Jamendo já salvas em playlists. |
 | `YT_COOKIES` / `YTDLP_COOKIES_FILE` | Opcional. Cookies caso o YouTube exija verificação anti-bot. |
-| `SEARCH_LIMIT` | Máximo de resultados (padrão 12). |
 
 ## API
 
@@ -166,8 +164,7 @@ Todas as rotas abaixo (exceto `/api/health`, `/api/auth/*` e `/api/auth-config`)
 | `POST /api/admin/users` | Admin: `{ name, email, role? }` cadastra usuário → `{ user, password }` (senha temporária). |
 | `GET /api/admin/users/:id/temp-password` | Admin: senha temporária pendente (404 depois que o usuário a troca). |
 | `POST /api/admin/users/:id/temp-password` | Admin: gera nova senha temporária `{ password }`. Demais ações de admin: `/api/auth/admin/*`. |
-| `GET /api/search?q=` | Gravações (MusicBrainz → fonte de áudio): `{ id, kind: 'recording', title, version, artist, album, thumbnail, duration, views, isrc, mbid, source, streamUrl }[]`, ordenadas por relevância + popularidade. |
-| `GET /api/search/youtube?q=` | Vídeos na ordem do próprio YouTube: `{ id, kind: 'video', title, artist (canal), thumbnail, duration, views, source, streamUrl }[]`. |
+| `GET /api/search?q=` | Vídeos na ordem do próprio YouTube (30 s a 20 min; `/api/search/youtube` é alias antigo): `{ id, kind: 'video', title, artist (canal), thumbnail, duration, views, source, streamUrl }[]`. |
 | `GET /api/stream/:videoId` | Áudio do YouTube (`audioonly`/`highestaudio`), com suporte a `Range` (seek). |
 | `GET /api/stream/jamendo/:id` | Proxy do MP3 do Jamendo. |
 | `GET /api/stream/archive/:identifier/*` | Proxy de arquivo do Internet Archive. |
@@ -185,16 +182,12 @@ O frontend lê essa mensagem, mostra um aviso e pula para a próxima faixa da fi
 - **ytdl-core + yt-dlp.** O `ytdl-core` original foi abandonado em 2023, e o fork mantido (`@distube/ytdl-core`) não recebe atualizações desde jun/2025: hoje ele falha com *"Failed to find any playable formats"*. Ele continua sendo o extrator primário (conforme a stack), mas o proxy cai automaticamente no **yt-dlp** (instalado na imagem, usando o Node como runtime JS). Um *circuit breaker* pula o ytdl-core por 10 min após uma falha não definitiva. Quando o YouTube mudar de novo, atualize com `docker compose build --no-cache server`.
 - **Seek de verdade.** O proxy repassa `Range`/`Content-Range`, então a seekbar funciona sem baixar a faixa inteira.
 - **Mesma origem.** O nginx serve o app e faz proxy de `/api` (com `proxy_buffering off`), o que evita CORS no `<audio>` e permite que o `AnalyserNode` leia as amostras para o visualizador.
-- **Ranking MusicBrainz.** Para músicas populares a busca da MB devolve dezenas de gravações com score 100 (shows, coletâneas, bandas tributo) e às vezes omite a gravação de estúdio. Por isso o backend faz duas consultas (uma restrita a álbuns de estúdio oficiais e uma geral), resolve se "A - B" é título-artista ou artista-título pela popularidade, penaliza versões alternativas (ao vivo, karaokê…), deduplica e herda a capa do álbum de estúdio original.
-- **Cache** (`node-cache`, em memória): MusicBrainz 1h, vídeo de cada gravação 24h, info de stream 4h. Prefetch das 2 primeiras faixas a cada busca, para o primeiro play ser imediato.
+- **Busca só no YouTube.** Havia também uma busca no catálogo MusicBrainz (gravação → vídeo casado por pontuação), removida porque trazia versões erradas com frequência; a ordem do próprio YouTube acerta mais.
+- **Cache** (`node-cache`, em memória): resultados de busca 1h, info de stream 4h. Prefetch das 4 primeiras faixas a cada busca, para o primeiro play ser imediato.
 
-## Abas de resultado
+## Resultados
 
-- **Gravações:** catálogo MusicBrainz, uma entrada por gravação, com álbum, versão e capa oficial.
-- **YouTube:** os vídeos como o YouTube mostra (clipes, uploads de fãs, versões fora do catálogo).
-- **Tudo:** as duas seções; vídeos que já tocam em algum card de gravação não se repetem.
-
-As duas buscas rodam em paralelo; a aba escolhida fica salva no navegador. Next/Previous seguem a lista em que o play foi dado.
+Os vídeos aparecem como o YouTube mostra (clipes, uploads, versões), sem Shorts nem compilações longas. Next/Previous seguem a lista em que o play foi dado.
 
 ## Atalhos
 

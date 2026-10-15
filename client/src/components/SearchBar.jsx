@@ -7,7 +7,7 @@ const EXAMPLES = ['Bohemian Rhapsody - Queen', 'Clair de Lune - Debussy', 'Garot
 export default function SearchBar({ compact }) {
   const [value, setValue] = useState('');
   const search = useSearchStore((s) => s.search);
-  const loading = useSearchStore((s) => s.recordings.loading && s.videos.loading);
+  const loading = useSearchStore((s) => s.loading);
 
   const submit = (e) => {
     e.preventDefault();

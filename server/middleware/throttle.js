@@ -1,33 +1,4 @@
-/**
- * Dois tipos de throttle:
- *  - createThrottle(): fila de saída (outbound) que garante um intervalo mínimo
- *    entre chamadas — usado para respeitar o limite de 1 req/s da MusicBrainz.
- *  - rateLimit(): middleware Express de entrada (inbound), janela fixa por IP.
- */
-
-function createThrottle(minIntervalMs = 1000, { maxQueue = 100 } = {}) {
-  let last = 0;
-  let chain = Promise.resolve();
-  let pending = 0;
-
-  return function schedule(task) {
-    if (pending >= maxQueue) {
-      return Promise.reject(Object.assign(new Error('Throttle queue full'), { code: 'QUEUE_FULL' }));
-    }
-    pending++;
-    const run = chain.then(async () => {
-      const wait = Math.max(0, last + minIntervalMs - Date.now());
-      if (wait) await new Promise((r) => setTimeout(r, wait));
-      last = Date.now();
-    });
-    // A próxima tarefa espera apenas o "slot", não a conclusão da anterior.
-    chain = run.catch(() => {});
-    return run.then(task).finally(() => {
-      pending--;
-    });
-  };
-}
-
+/** Middleware Express de entrada (inbound): janela fixa por IP. */
 function rateLimit({ windowMs = 60_000, max = 60 } = {}) {
   const hits = new Map();
   setInterval(() => {
@@ -54,4 +25,4 @@ function rateLimit({ windowMs = 60_000, max = 60 } = {}) {
   };
 }
 
-module.exports = { createThrottle, rateLimit };
+module.exports = { rateLimit };

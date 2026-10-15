@@ -36,23 +36,4 @@ function parseClock(text = '') {
   return parts.reduce((acc, p) => acc * 60 + p, 0);
 }
 
-/** Escapa caracteres especiais da sintaxe Lucene usada pela MusicBrainz. */
-function luceneEscape(s) {
-  return String(s).replace(/([+\-&|!(){}\[\]^"~*?:\/])/g, '\$1');
-}
-
-/** Executa `fn` sobre `items` com no máximo `limit` promessas simultâneas. */
-async function mapLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      out[idx] = await fn(items[idx], idx);
-    }
-  });
-  await Promise.all(workers);
-  return out;
-}
-
-module.exports = { normalize, tokens, tokenCoverage, parseIsoDuration, parseClock, luceneEscape, mapLimit };
+module.exports = { normalize, tokens, tokenCoverage, parseIsoDuration, parseClock };
