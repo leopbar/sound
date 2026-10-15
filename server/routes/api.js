@@ -3,6 +3,7 @@ const musicService = require('../services/musicService');
 const streamService = require('../services/streamService');
 const lyricsService = require('../services/lyrics');
 const translateService = require('../services/translate');
+const chartsService = require('../services/charts');
 const { rateLimit } = require('../middleware/throttle');
 const { requireAuth } = require('../middleware/requireAuth');
 const { HttpError } = require('../lib/errors');
@@ -36,6 +37,14 @@ function searchRoute(searchFn) {
 // Vídeos na ordem do próprio YouTube.
 // '/search/youtube' é o caminho antigo (apps com a versão anterior ainda em cache).
 router.get(['/search', '/search/youtube'], rateLimit({ windowMs: 60_000, max: 30 }), searchRoute(musicService.searchYouTube));
+
+// Mais tocadas no mundo (parada semanal global do YouTube), mostradas na tela inicial.
+router.get('/charts/top', rateLimit({ windowMs: 60_000, max: 30 }), wrap(async (req, res) => {
+  const chart = await chartsService.getGlobalTop();
+  streamService.prefetch(chart.tracks.slice(0, 2).map((t) => t.sourceId));
+  // Sem cache no navegador: o servidor já guarda a lista, e uma troca de fonte vale na hora.
+  res.set('Cache-Control', 'no-store').json(chart);
+}));
 
 // Letra da faixa que está tocando (LRCLIB).
 router.get('/lyrics', rateLimit({ windowMs: 60_000, max: 60 }), wrap(async (req, res) => {

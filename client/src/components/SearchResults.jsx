@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchStore } from '../store/searchStore';
+import { useChartStore } from '../store/chartStore';
 import TrackList from './TrackList';
 import { ListIcon, GridIcon } from './Icons';
 
@@ -39,10 +40,42 @@ function ViewToggle({ view, setView }) {
   );
 }
 
+/** Tela inicial: as 30 mais tocadas no mundo (Top 50 - Global do Spotify). */
+function TopChart({ view, toggle }) {
+  const { tracks, loading, error, load } = useChartStore();
+  useEffect(() => load(), [load]);
+
+  return (
+    <section aria-labelledby="top-chart-title">
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h2 id="top-chart-title" className="text-xl font-bold">Mais tocadas no mundo</h2>
+          <p className="text-xs text-zinc-500">Top 50 Global do Spotify · atualizada todo dia</p>
+        </div>
+        {toggle}
+      </div>
+      {error ? (
+        <div className="py-10 text-center text-zinc-400">
+          <p>Não foi possível carregar as mais tocadas.</p>
+          <button
+            type="button"
+            onClick={load}
+            className="mt-3 rounded-full border border-surface-600 px-4 py-1.5 text-sm transition hover:border-zinc-400"
+          >
+            Tentar de novo
+          </button>
+        </div>
+      ) : (
+        <TrackList tracks={tracks} view={view} loading={loading} ranked skeleton={view === 'list' ? 10 : 8} />
+      )}
+    </section>
+  );
+}
+
+/** Resultados da busca; sem busca, as mais tocadas. */
 export default function SearchResults() {
   const { query, searched, items, loading, error } = useSearchStore();
   const [view, setViewState] = useState(loadView);
-  if (!searched) return null;
 
   const setView = (v) => {
     setViewState(v);
@@ -52,12 +85,13 @@ export default function SearchResults() {
       /* armazenamento indisponível */
     }
   };
+  const toggle = <ViewToggle view={view} setView={setView} />;
+
+  if (!searched) return <TopChart view={view} toggle={toggle} />;
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
-        <ViewToggle view={view} setView={setView} />
-      </div>
+      <div className="mb-4 flex justify-end">{toggle}</div>
       <TrackList
         tracks={items}
         view={view}

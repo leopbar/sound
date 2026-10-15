@@ -23,4 +23,10 @@ export const useSearchStore = create((set) => ({
         if (err.name !== 'AbortError') set({ items: [], loading: false, error: err.message });
       });
   },
+
+  /** Campo de busca esvaziado: volta para as mais tocadas. */
+  clear() {
+    controller?.abort();
+    set({ query: '', searched: false, items: [], loading: false, error: null });
+  },
 }));

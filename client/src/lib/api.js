@@ -29,6 +29,9 @@ async function getResults(path, query, signal) {
 /** Busca: vídeos do YouTube, na ordem do próprio YouTube. */
 export const searchVideos = (query, { signal } = {}) => getResults('/api/search', query, signal);
 
+/** Mais tocadas no mundo (Top 50 - Global do Spotify, com vídeo do YouTube): { updatedAt, tracks }. */
+export const getTopChart = ({ signal } = {}) => request('/api/charts/top', { signal });
+
 /** Letra (LRCLIB) da faixa: { found, instrumental, synced: [{ time, text }] | null, plain }. */
 export function getLyrics(track, { signal } = {}) {
   const params = new URLSearchParams({ title: track.title || '', artist: track.artist || '' });

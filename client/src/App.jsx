@@ -10,7 +10,6 @@ import ForcePasswordChange from './components/ForcePasswordChange';
 import InstallButton from './components/InstallButton';
 import { Spinner } from './components/Icons';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { useSearchStore } from './store/searchStore';
 import { usePlaylistStore } from './store/playlistStore';
 import { authClient } from './lib/authClient';
 import { API_BASE } from './lib/base';
@@ -43,7 +42,6 @@ export default function App() {
 
 function Player({ session, config }) {
   useAudioPlayer(session.user.id);
-  const hasSearched = useSearchStore((s) => s.searched);
   const [view, setView] = useState('search'); // search | playlists | admin | account
   const isAdmin = session.user.role === 'admin';
 
@@ -77,19 +75,12 @@ function Player({ session, config }) {
       </nav>
 
       {view === 'search' && (
-      <header
-        className={`mx-auto flex max-w-3xl flex-col items-center px-4 transition-all duration-500 ${
-          hasSearched ? 'pt-8' : 'pt-[22vh]'
-        }`}
-      >
-        <h1 className={`font-bold tracking-tight transition-all ${hasSearched ? 'mb-5 text-2xl' : 'mb-2 text-5xl'}`}>
-          <span className="text-accent">♪</span> Sound
-        </h1>
-        {!hasSearched && (
-          <p className="mb-8 text-center text-zinc-400">Busque qualquer gravação do mundo e ouça na hora.</p>
-        )}
-        <SearchBar compact={hasSearched} />
-      </header>
+        <header className="mx-auto flex max-w-3xl flex-col items-center px-4 pt-8">
+          <h1 className="mb-5 text-2xl font-bold tracking-tight">
+            <span className="text-accent">♪</span> Sound
+          </h1>
+          <SearchBar />
+        </header>
       )}
 
       <main className="mx-auto mt-10 max-w-screen-2xl px-4">

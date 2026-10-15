@@ -63,7 +63,7 @@ function Meta({ track, error }) {
   );
 }
 
-function Card({ track, active, status, err, onSelect }) {
+function Card({ track, rank, active, status, err, onSelect }) {
   const playing = active && status === 'playing';
   return (
     <li className="group/card relative">
@@ -78,6 +78,11 @@ function Card({ track, active, status, err, onSelect }) {
       >
         <div className="relative overflow-hidden rounded-lg shadow-lg shadow-black/40">
           <Artwork track={track} className="aspect-video w-full" />
+          {rank && (
+            <span className="absolute left-2 top-2 rounded-md bg-black/70 px-2 py-0.5 text-xs font-bold tabular-nums">
+              {rank}
+            </span>
+          )}
           <span
             className={`absolute bottom-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-accent text-black shadow-xl transition ${
               active ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100'
@@ -100,7 +105,7 @@ function Card({ track, active, status, err, onSelect }) {
 }
 
 /** Linha da lista: miniatura pequena, nome, canal · views, duração e o "+". */
-function Row({ track, active, status, err, onSelect }) {
+function Row({ track, rank, active, status, err, onSelect }) {
   const playing = active && status === 'playing';
   const meta = [track.artist, viewsLabel(track, err)].filter(Boolean).join(' · ');
   return (
@@ -115,6 +120,11 @@ function Row({ track, active, status, err, onSelect }) {
         title={err || `${track.title} — ${track.artist}`}
         className="group flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
       >
+        {rank && (
+          <span className={`w-6 shrink-0 text-right text-sm font-semibold tabular-nums ${active ? 'text-accent' : 'text-zinc-500'}`}>
+            {rank}
+          </span>
+        )}
         <div className="relative h-9 w-16 shrink-0 overflow-hidden rounded">
           <Artwork track={track} className="h-full w-full" />
           <span
@@ -147,9 +157,10 @@ function Row({ track, active, status, err, onSelect }) {
 
 /**
  * Resultados da busca (vídeos do YouTube). `view`: 'list' (linhas compactas) ou 'grid'
- * (cards com thumbnail 16:9). Clicar toca a faixa usando `tracks` como fila.
+ * (cards com thumbnail 16:9). Clicar toca a faixa usando `tracks` como fila. `ranked` numera
+ * as faixas (parada das mais tocadas).
  */
-export default function TrackList({ tracks, view = 'list', loading, error, emptyText, skeleton = 8 }) {
+export default function TrackList({ tracks, view = 'list', loading, error, emptyText, skeleton = 8, ranked = false }) {
   const current = usePlayerStore(selectCurrentTrack);
   const status = usePlayerStore((s) => s.status);
   const failed = usePlayerStore((s) => s.failed);
@@ -168,6 +179,7 @@ export default function TrackList({ tracks, view = 'list', loading, error, empty
           <Item
             key={track.id}
             track={track}
+            rank={ranked ? track.rank || i + 1 : null}
             active={active}
             status={status}
             err={failed[track.id]}
