@@ -5,7 +5,8 @@ import { PlusIcon, CheckIcon } from './Icons';
 /**
  * Botão "+" para adicionar a faixa a uma playlist (ou criar uma nova). Vira "✓" quando a
  * faixa já está em alguma playlist; o menu continua abrindo para incluí-la em outras.
- * `variant="card"`: canto do card (aparece no hover). `variant="bar"`: na PlayerBar (menu abre para cima).
+ * `variant="card"`: canto do card (aparece no hover). `variant="row"`: no fim da linha da lista
+ * (idem, mas no fluxo). `variant="bar"`: na PlayerBar (menu abre para cima).
  */
 export default function AddToPlaylist({ track, variant = 'card' }) {
   const playlists = usePlaylistStore((s) => s.playlists);
@@ -57,7 +58,7 @@ export default function AddToPlaylist({ track, variant = 'card' }) {
       }`;
 
   return (
-    <div ref={ref} className={bar ? 'relative shrink-0' : 'absolute right-5 top-5 z-10'}>
+    <div ref={ref} className={bar || variant === 'row' ? 'relative shrink-0' : 'absolute right-5 top-5 z-10'}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -72,7 +73,7 @@ export default function AddToPlaylist({ track, variant = 'card' }) {
         <div
           role="menu"
           className={`absolute w-56 rounded-lg border border-surface-600 bg-surface-800 p-2 text-sm shadow-xl ${
-            bar ? 'bottom-full left-0 mb-2' : 'right-0 mt-2'
+            bar ? 'bottom-full left-0 mb-2' : 'right-0 z-20 mt-2'
           }`}
         >
           <p className="px-2 pb-1 text-[11px] uppercase tracking-wide text-zinc-500">Adicionar à playlist</p>

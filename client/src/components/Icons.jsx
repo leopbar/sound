@@ -85,6 +85,16 @@ export const CheckIcon = (p) => (
     <path d="M5 12.5l4.5 4.5L19 7.5" />
   </svg>
 );
+export const ListIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}>
+    <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" />
+  </svg>
+);
+export const GridIcon = (p) => (
+  <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" {...p}>
+    <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />
+  </svg>
+);
 export const CloseIcon = (p) => (
   <svg {...base} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" {...p}>
     <path d="M6 6l12 12M18 6 6 18" />
