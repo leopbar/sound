@@ -14,6 +14,7 @@ const { pool } = require('./db');
 const apiRouter = require('./routes/api');
 const playlistsRouter = require('./routes/playlists');
 const adminRouter = require('./routes/admin');
+const ytdlp = require('./services/ytdlp');
 const { requireAuth } = require('./middleware/requireAuth');
 const { HttpError } = require('./lib/errors');
 
@@ -70,6 +71,8 @@ migrate()
       if (!config.youtubeApiKey) console.log('[server] YOUTUBE_API_KEY ausente: usando busca interna do YouTube.');
       if (!config.jamendoClientId) console.log('[server] JAMENDO_CLIENT_ID ausente: fallback Jamendo desativado.');
       if (!publicAuthConfig.emailVerification) console.log('[server] SMTP_URL ausente: links de e-mail vão para este log e a verificação de e-mail fica desativada.');
+      // Processos permanentes do yt-dlp prontos antes do primeiro play.
+      ytdlp.start().catch((err) => console.warn('[ytdlp] processos permanentes não subiram:', err.message));
     });
     for (const sig of ['SIGTERM', 'SIGINT']) {
       process.on(sig, () => server.close(() => pool.end().finally(() => process.exit(0))));

@@ -1,41 +1,31 @@
 /**
  * Proxy de streaming de áudio.
- *  - YouTube: ytdl-core (fork @distube/ytdl-core), audioonly / highestaudio, com
- *    yt-dlp como extrator de reserva. Suporta HTTP Range para o <audio> fazer seek.
+ *  - YouTube: URL do áudio resolvida pelo yt-dlp (ytdlp.js: processos permanentes, com a linha
+ *    de comando de reserva) e repassada com HTTP Range para o <audio> fazer seek.
  *  - Jamendo / Internet Archive: proxy HTTP simples com repasse de Range.
  */
 const axios = require('axios');
 const NodeCache = require('node-cache');
-const ytdl = require('@distube/ytdl-core');
 const { TTL } = require('../lib/cache');
 const { HttpError } = require('../lib/errors');
 const { jamendoAudioUrl } = require('./fallbacks');
 const ytdlp = require('./ytdlp');
 
-// Objetos `info` são grandes; cache dedicado com limite de entradas.
+// Cache dedicado com limite de entradas.
 const infoCache = new NodeCache({ stdTTL: TTL.STREAM_INFO, maxKeys: 300, useClones: false });
 
-let agent;
-if (process.env.YT_COOKIES) {
-  try {
-    // Formato: array JSON exportado pela extensão "EditThisCookie" / "Cookie-Editor".
-    agent = ytdl.createAgent(JSON.parse(process.env.YT_COOKIES));
-    console.log('[stream] usando cookies do YouTube');
-  } catch (e) {
-    console.warn('[stream] YT_COOKIES inválido:', e.message);
-  }
-}
+const VIDEO_ID = /^[\w-]{11}$/;
 
 /* ------------------------------------------------------------------ */
-/* Classificação de erros do ytdl                                      */
+/* Classificação de erros do yt-dlp                                    */
 /* ------------------------------------------------------------------ */
 
 const ERROR_PATTERNS = [
   [/private video|video is private/i, 'VIDEO_PRIVATE', 'O vídeo é privado.'],
   [/not available in your country|blocked it in your country|region/i, 'REGION_BLOCKED', 'O vídeo está bloqueado nesta região.'],
-  [/removed|terminated|no longer available|does not exist|video unavailable/i, 'VIDEO_REMOVED', 'O vídeo foi removido ou está indisponível.'],
+  [/removed|terminated|no longer available|does not exist|video (is )?unavailable/i, 'VIDEO_REMOVED', 'O vídeo foi removido ou está indisponível.'],
   [/confirm your age|age-restricted|inappropriate/i, 'AGE_RESTRICTED', 'O vídeo tem restrição de idade.'],
-  [/not a bot|sign in to confirm/i, 'BOT_CHECK', 'O YouTube exigiu verificação anti-bot (configure YT_COOKIES).'],
+  [/not a bot|sign in to confirm/i, 'BOT_CHECK', 'O YouTube exigiu verificação anti-bot (configure YTDLP_COOKIES_FILE).'],
   [/copyright/i, 'COPYRIGHT_BLOCKED', 'O vídeo foi bloqueado por direitos autorais.'],
   [/status code: 429|too many requests/i, 'UPSTREAM_RATE_LIMITED', 'O YouTube limitou as requisições temporariamente.'],
   [/no such format|no formats/i, 'NO_AUDIO_FORMAT', 'Nenhum formato de áudio disponível.'],
@@ -75,9 +65,8 @@ function parseRange(header, size) {
 /* YouTube                                                             */
 /* ------------------------------------------------------------------ */
 
-// Erros definitivos: não adianta tentar outro extrator.
-const FATAL = new Set(['VIDEO_PRIVATE', 'VIDEO_REMOVED', 'REGION_BLOCKED', 'COPYRIGHT_BLOCKED']);
-let ytdlBrokenUntil = 0;
+// Erros definitivos: a linha de comando daria o mesmo resultado do processo permanente.
+const FATAL = new Set(['VIDEO_PRIVATE', 'VIDEO_REMOVED', 'REGION_BLOCKED', 'COPYRIGHT_BLOCKED', 'AGE_RESTRICTED']);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -106,53 +95,39 @@ async function waitUntilAvailable(entry) {
 
 /** Pré-resolve as fontes das primeiras faixas para o primeiro play ser imediato. */
 function prefetch(videoIds) {
-  for (const id of videoIds) getAudioSource(id).catch(() => {});
+  for (const id of videoIds) getAudioSource(id, 'low').catch(() => {});
 }
 
 /**
- * Resolve a fonte de áudio de um vídeo:
- *  1. ytdl-core (audioonly / highestaudio);
- *  2. se falhar por motivo não definitivo (ex.: mudança no player do YouTube), yt-dlp.
- * O resultado fica em cache (as URLs do googlevideo valem ~6h).
+ * Resolve a fonte de áudio de um vídeo pelo yt-dlp. O resultado fica em cache (as URLs do
+ * googlevideo valem ~6h). `priority: 'low'` = pré-carga (ninguém esperando).
  */
 const inflight = new Map();
-function getAudioSource(videoId) {
+function getAudioSource(videoId, priority = 'high') {
   const cached = infoCache.get(videoId);
   if (cached) return Promise.resolve(cached);
   // Prefetch e play simultâneos compartilham a mesma resolução.
   if (!inflight.has(videoId)) {
-    inflight.set(videoId, resolveSource(videoId).finally(() => inflight.delete(videoId)));
+    inflight.set(videoId, resolveSource(videoId, priority).finally(() => inflight.delete(videoId)));
   }
   return inflight.get(videoId);
 }
 
-async function resolveSource(videoId) {
+async function resolveSource(videoId, priority) {
   let entry;
   try {
-    // Circuit breaker: se o ytdl-core falhou há pouco por motivo não definitivo
-    // (tipicamente quebra após mudança no YouTube), vai direto ao yt-dlp.
-    if (Date.now() < ytdlBrokenUntil) throw new Error('ytdl-core circuit open');
-    const info = await ytdl.getInfo(videoId, agent ? { agent } : {});
-    const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
-    entry = {
-      kind: 'ytdl',
-      info,
-      format,
-      mime: (format.mimeType || 'audio/webm').split(';')[0],
-      size: Number(format.contentLength) || 0,
-    };
-  } catch (ytdlErr) {
-    const classified = toStreamError(ytdlErr, videoId);
-    if (FATAL.has(classified.code) || !(await ytdlp.isAvailable())) throw classified;
-    if (Date.now() >= ytdlBrokenUntil) {
-      ytdlBrokenUntil = Date.now() + 10 * 60 * 1000;
-      console.warn(`[stream] ytdl-core falhou para ${videoId} (${ytdlErr.message}); usando yt-dlp por 10 min.`);
-    }
+    entry = await ytdlp.resolveAudio(videoId, { priority });
+  } catch (err) {
+    const classified = toStreamError(err, videoId);
+    if (err.via !== 'worker' || FATAL.has(classified.code)) throw classified;
+    // Reserva: o processo permanente errou onde a linha de comando pode acertar (estado velho dele).
     try {
-      entry = { kind: 'direct', ...(await ytdlp.resolveAudio(videoId)) };
-    } catch (err) {
-      throw toStreamError(err, videoId);
+      entry = await ytdlp.resolveAudio(videoId, { cli: true });
+    } catch (cliErr) {
+      throw toStreamError(cliErr, videoId);
     }
+    console.warn(`[stream] processo permanente do yt-dlp falhou para ${videoId} (${err.message}) e a linha de comando resolveu; reiniciando-o.`);
+    ytdlp.recycle();
   }
 
   try {
@@ -165,11 +140,15 @@ async function resolveSource(videoId) {
 }
 
 async function streamYouTube(videoId, req, res, retry = true) {
-  if (!ytdl.validateID(videoId)) {
+  if (!VIDEO_ID.test(videoId)) {
     throw new HttpError(400, 'INVALID_VIDEO_ID', 'ID de vídeo inválido.', { videoId });
   }
 
+  // Tempos de cada etapa, para o log (diagnóstico da demora para começar a tocar).
+  const t0 = Date.now();
+  const src = infoCache.has(videoId) ? 'cache' : inflight.has(videoId) ? 'joined' : null;
   const entry = await getAudioSource(videoId);
+  const resolveMs = Date.now() - t0;
   const { size, mime } = entry;
   const range = parseRange(req.headers.range, size);
 
@@ -181,48 +160,51 @@ async function streamYouTube(videoId, req, res, retry = true) {
   const { start, end } = range || { start: 0, end: size - 1 };
   const invalidate = () => infoCache.del(videoId); // URL expirada/negada: re-resolve na próxima
 
+  // URL direta do googlevideo: sempre pedimos um intervalo explícito (evita throttling).
+  const fetchUpstream = () =>
+    axios
+      .get(entry.url, {
+        responseType: 'stream',
+        timeout: 15_000,
+        headers: { ...entry.headers, ...(size ? { Range: `bytes=${start}-${end}` } : {}) },
+      })
+      .then(keepOpen);
   let stream;
-  if (entry.kind === 'ytdl') {
-    const options = { format: entry.format, highWaterMark: 1 << 25, ...(agent ? { agent } : {}) };
-    if (size) options.range = { start, end };
-    stream = ytdl.downloadFromInfo(entry.info, options);
-  } else {
-    // URL direta do googlevideo: sempre pedimos um intervalo explícito (evita throttling).
-    const fetchUpstream = () =>
-      axios
-        .get(entry.url, {
-          responseType: 'stream',
-          timeout: 15_000,
-          headers: { ...entry.headers, ...(size ? { Range: `bytes=${start}-${end}` } : {}) },
-        })
-        .then(keepOpen);
+  let waitMs;
+  let upstreamMs;
+  try {
+    await waitUntilAvailable(entry);
+    waitMs = Date.now() - t0 - resolveMs;
+    const t1 = Date.now();
     try {
-      await waitUntilAvailable(entry);
-      try {
-        stream = (await fetchUpstream()).data;
-      } catch (err) {
-        // 403 logo após o available_at (relógios levemente diferentes): mesma URL, 1s depois.
-        if (err.response?.status !== 403 || Date.now() > entry.availableAt + AVAILABILITY_GRACE_MS) throw err;
-        await sleep(1000);
-        stream = (await fetchUpstream()).data;
-      }
+      stream = (await fetchUpstream()).data;
     } catch (err) {
-      invalidate();
-      // URLs do googlevideo podem expirar ou ser negadas (403): re-resolve uma vez.
-      if (retry && [403, 410].includes(err.response?.status)) return streamYouTube(videoId, req, res, false);
-      throw toStreamError(err, videoId);
+      // 403 logo após o available_at (relógios levemente diferentes): mesma URL, 1s depois.
+      if (err.response?.status !== 403 || Date.now() > entry.availableAt + AVAILABILITY_GRACE_MS) throw err;
+      await sleep(1000);
+      stream = (await fetchUpstream()).data;
     }
+    upstreamMs = Date.now() - t1;
+  } catch (err) {
+    invalidate();
+    // URLs do googlevideo podem expirar ou ser negadas (403): re-resolve uma vez.
+    if (retry && [403, 410].includes(err.response?.status)) return streamYouTube(videoId, req, res, false);
+    throw toStreamError(err, videoId);
   }
 
   res.setHeader('Content-Type', mime);
   res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('X-Audio-Source', `youtube/${entry.kind === 'ytdl' ? 'ytdl-core' : 'yt-dlp'}`);
+  res.setHeader('X-Audio-Source', 'youtube/yt-dlp');
   if (size) {
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Length', end - start + 1);
     if (range) res.status(206).setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
   }
 
+  console.log(
+    `[stream] ${videoId} bytes=${start}-${end} src=${src || entry.via} resolve=${resolveMs}ms ` +
+      `wait=${waitMs}ms upstream=${upstreamMs}ms total=${Date.now() - t0}ms${retry ? '' : ' retry=1'}`
+  );
   return pipeWithErrors(stream, req, res, videoId, invalidate);
 }
 

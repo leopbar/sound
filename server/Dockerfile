@@ -1,6 +1,6 @@
 FROM node:22-alpine
 
-# yt-dlp: extrator de reserva quando o ytdl-core não acompanha mudanças do YouTube.
+# yt-dlp: resolve o áudio do YouTube (processos permanentes em services/ytdlp_worker.py).
 # Sem versão fixa de propósito — o YouTube muda com frequência; rebuild para atualizar:
 #   docker compose build --no-cache server
 RUN apk add --no-cache python3 py3-pip \

@@ -76,6 +76,8 @@ let stallTimer = null;
 let handling = null; // evita tratar duas vezes a mesma falha (rejeição do play() + evento 'error')
 let pauseIntent = null; // quem pediu a pausa em curso ('user' | 'lockscreen'); sem isso foi o sistema
 let generation = 0; // muda quando o usuário pausa ou troca de faixa: invalida tratamentos em andamento
+// Carga em andamento, para medir quanto demora até sair som (evento 'start' do diário).
+let pendingStart = null; // { id, at, src, pos, retry }
 const warmed = new Set();
 // Erros "fonte/formato" (code 4) com a faixa boa no servidor, seguidos e com a tela acesa.
 // Um só não basta: um pedido que ficou travado com a tela apagada também termina em code 4.
@@ -193,7 +195,9 @@ export const usePlayerStore = create((set, get) => {
       saveQueue();
       get().savePosition(true);
       // Cópia local (baixada durante a faixa anterior): toca sem rede, mesmo com a tela apagada.
-      engine.load(cachedUrl(track.id) || streamUrl(track), startAt, track.id);
+      const local = cachedUrl(track.id);
+      engine.load(local || streamUrl(track), startAt, track.id);
+      pendingStart = { id: track.id, at: performance.now(), src: local ? 'local' : 'net', pos: Math.round(startAt), retry };
       watchStall(true);
       engine.play().catch((err) => get().handleError(err));
     },
@@ -216,6 +220,7 @@ export const usePlayerStore = create((set, get) => {
     /** `via`: 'user' (botão no app) ou 'lockscreen' (tela de bloqueio, fone, teclas de mídia). */
     pause(via = 'user') {
       generation++;
+      pendingStart = null; // pausou antes de tocar: o tempo não diz nada sobre a carga
       // Pausou no meio de uma recuperação: o próximo play recarrega do ponto salvo.
       if (recovery) engine.trackId = null;
       clearRecovery();
@@ -299,6 +304,11 @@ export const usePlayerStore = create((set, get) => {
       formatErrors = { id: null, n: 0 };
       set({ status: 'playing' });
       const track = current();
+      if (pendingStart && pendingStart.id === track?.id) {
+        const { at, src, pos, retry } = pendingStart;
+        logEvent('start', { id: track.id, ms: Math.round(performance.now() - at), src, ...(pos && { pos }), ...(retry && { retry: 1 }) });
+      }
+      pendingStart = null;
       if (recovery && track && recovery.id === track.id) {
         logEvent('resumed', { id: track.id, pos: position(), after: Math.round((Date.now() - recovery.since) / 1000) });
         clearRecovery();

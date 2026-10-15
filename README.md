@@ -8,7 +8,7 @@ React (Vite + Tailwind + Zustand)  ──/api──▶  nginx  ──▶  Expres
                                                           ├─ /api/playlists (por usuário, PostgreSQL)
                                                           ├─ YouTube      (busca: Data API v3 ou busca interna)
                                                           ├─ Jamendo / Internet Archive (só stream de faixas já salvas)
-                                                          └─ /api/stream  (ytdl-core → yt-dlp, HTTP Range)
+                                                          └─ /api/stream  (yt-dlp, HTTP Range)
 ```
 
 ## Rodando (Docker)
@@ -145,7 +145,8 @@ docker compose -f docker-compose.dev.yml up
 | `MB_USER_AGENT` | Recomendado. User-Agent (`App/versão ( contato )`) enviado ao LRCLIB (letras). |
 | `YOUTUBE_API_KEY` | Opcional. Busca via Data API v3 (mais precisa). Sem chave — ou com a cota esgotada — usa a busca interna (parse do `ytInitialData`). |
 | `JAMENDO_CLIENT_ID` | Opcional. Necessário só para tocar faixas do Jamendo já salvas em playlists. |
-| `YT_COOKIES` / `YTDLP_COOKIES_FILE` | Opcional. Cookies caso o YouTube exija verificação anti-bot. |
+| `YTDLP_COOKIES_FILE` | Opcional. Arquivo de cookies (formato Netscape) caso o YouTube exija verificação anti-bot. |
+| `YTDLP_WORKERS` | Opcional. Processos permanentes do yt-dlp (padrão 2; `0` = só a linha de comando). |
 
 ## API
 
@@ -179,7 +180,7 @@ O frontend lê essa mensagem, mostra um aviso e pula para a próxima faixa da fi
 
 ## Decisões de arquitetura
 
-- **ytdl-core + yt-dlp.** O `ytdl-core` original foi abandonado em 2023, e o fork mantido (`@distube/ytdl-core`) não recebe atualizações desde jun/2025: hoje ele falha com *"Failed to find any playable formats"*. Ele continua sendo o extrator primário (conforme a stack), mas o proxy cai automaticamente no **yt-dlp** (instalado na imagem, usando o Node como runtime JS). Um *circuit breaker* pula o ytdl-core por 10 min após uma falha não definitiva. Quando o YouTube mudar de novo, atualize com `docker compose build --no-cache server`.
+- **yt-dlp sempre aberto.** O áudio do YouTube é resolvido pelo **yt-dlp** (instalado na imagem, usando o Node como runtime JS). Ele fica aberto em processos permanentes (`ytdlp_worker.py`, ~1,2 s por música em vez de ~3 s abrindo um processo a cada vez), com a linha de comando como reserva se nenhum estiver livre ou se um cair. O `ytdl-core` (`@distube/ytdl-core`) foi removido: o repositório foi arquivado em ago/2025 e ele falhava sempre. Quando o YouTube mudar de novo, atualize com `docker compose build --no-cache server`.
 - **Seek de verdade.** O proxy repassa `Range`/`Content-Range`, então a seekbar funciona sem baixar a faixa inteira.
 - **Mesma origem.** O nginx serve o app e faz proxy de `/api` (com `proxy_buffering off`), o que evita CORS no `<audio>` e permite que o `AnalyserNode` leia as amostras para o visualizador.
 - **Busca só no YouTube.** Havia também uma busca no catálogo MusicBrainz (gravação → vídeo casado por pontuação), removida porque trazia versões erradas com frequência; a ordem do próprio YouTube acerta mais.
