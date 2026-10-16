@@ -3,11 +3,18 @@
  */
 const axios = require('axios');
 const config = require('../config');
+const { pool } = require('../db');
 const { remember } = require('../lib/cache');
 const { normalize, tokenCoverage } = require('../lib/text');
 const { HttpError } = require('../lib/errors');
 
-const LYRICS_TTL = 60 * 60 * 24; // letras não mudam; "não encontrada" também fica 24h
+const LYRICS_TTL = 60 * 60 * 24; // memória; letras encontradas também ficam no banco (lyrics_cache)
+
+// O LRCLIB recusa pedidos ao acaso (429, "retry-after: 1"), mesmo com o servidor parado há
+// tempos; repetir ~1,5 s depois quase sempre funciona.
+const RETRY_DELAYS_MS = [1500, 3000, 5000];
+const RETRY_BUDGET_MS = 15000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const http = axios.create({
   baseURL: 'https://lrclib.net/api',
@@ -93,32 +100,61 @@ function toResult(item) {
   };
 }
 
+/**
+ * GET no LRCLIB repetindo em falha passageira (429, 5xx, sem resposta). Os status de
+ * `definitive` são respostas de verdade ("não achei") e não são repetidos.
+ */
+async function lrclib(path, params, { definitive = [] } = {}) {
+  const started = Date.now();
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { data } = await http.get(path, { params });
+      return data;
+    } catch (err) {
+      const status = err.response?.status;
+      const transient = !definitive.includes(status) && (!status || status === 429 || status >= 500);
+      const after = Number(err.response?.headers?.['retry-after']);
+      const wait = Math.max(RETRY_DELAYS_MS[attempt] || 0, after > 0 && after <= 10 ? after * 1000 : 0);
+      if (!transient || attempt >= RETRY_DELAYS_MS.length || Date.now() - started + wait > RETRY_BUDGET_MS) throw err;
+      await sleep(wait);
+    }
+  }
+}
+
+/** { item } achado, { item: null } sem correspondência exata, ou { failed } se o LRCLIB falhou. */
 async function exactMatch(want) {
-  if (!want.duration) return null;
+  if (!want.duration) return { item: null };
   try {
-    const { data } = await http.get('/get', {
-      params: {
+    const data = await lrclib(
+      '/get',
+      {
         track_name: want.title,
         artist_name: want.artist,
         ...(want.album ? { album_name: want.album } : {}),
         duration: Math.round(want.duration),
       },
-    });
-    return data;
-  } catch {
-    // 404 = sem correspondência exata; o /get também responde 503 em vários casos
-    // de "não achei". Em qualquer erro, a busca aproximada decide.
-    return null;
+      // 404 = sem correspondência exata; o /get também responde 503 quando não acha.
+      { definitive: [404, 503] }
+    );
+    return { item: data };
+  } catch (err) {
+    const status = err.response?.status;
+    const answered = status === 503 || (status >= 400 && status < 500 && status !== 429);
+    return answered ? { item: null } : { item: null, failed: err };
   }
+}
+
+function unavailable(want, err) {
+  console.warn(`[lyrics] LRCLIB falhou para "${want.artist} - ${want.title}":`, err.message);
+  return new HttpError(502, 'LYRICS_UNAVAILABLE', 'Serviço de letras indisponível no momento.');
 }
 
 async function fuzzyMatch(want) {
   let data;
   try {
-    ({ data } = await http.get('/search', { params: { track_name: want.title, artist_name: want.artist } }));
+    data = await lrclib('/search', { track_name: want.title, artist_name: want.artist });
   } catch (err) {
-    console.warn(`[lyrics] LRCLIB falhou para "${want.artist} - ${want.title}":`, err.message);
-    throw new HttpError(502, 'LYRICS_UNAVAILABLE', 'Serviço de letras indisponível no momento.');
+    throw unavailable(want, err);
   }
   let best = null;
   let bestScore = 0;
@@ -127,6 +163,39 @@ async function fuzzyMatch(want) {
     if (s > bestScore) [best, bestScore] = [item, s];
   }
   return best;
+}
+
+async function lookup(want) {
+  const exact = await exactMatch(want);
+  if (exact.item) return toResult(exact.item);
+  const best = await fuzzyMatch(want);
+  // Sem resultado na busca aproximada, mas o /get falhou: pode existir. Não vira "não encontrada".
+  if (!best && exact.failed) throw unavailable(want, exact.failed);
+  return toResult(best);
+}
+
+/* -------------------- letras já encontradas (banco) -------------------- */
+
+async function readStored(key) {
+  try {
+    const { rows } = await pool.query('SELECT data FROM lyrics_cache WHERE key = $1', [key]);
+    return rows[0]?.data || null;
+  } catch (err) {
+    console.warn('[lyrics] leitura do banco falhou:', err.message);
+    return null;
+  }
+}
+
+async function store(key, result) {
+  try {
+    await pool.query(
+      `INSERT INTO lyrics_cache (key, data) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, created_at = now()`,
+      [key, result]
+    );
+  } catch (err) {
+    console.warn('[lyrics] gravação no banco falhou:', err.message);
+  }
 }
 
 /**
@@ -142,8 +211,12 @@ async function getLyrics({ title, artist, album, duration, kind }) {
 
   const key = `lyrics:${normalize(want.artist)}:${normalize(want.title)}:${normalize(want.album || '')}:${Math.round(duration || 0)}`;
   return remember(key, LYRICS_TTL, async () => {
-    const item = (await exactMatch(want)) || (await fuzzyMatch(want));
-    return toResult(item);
+    const stored = await readStored(key);
+    if (stored) return stored;
+    const result = await lookup(want);
+    // Só a letra encontrada fica para sempre; "não encontrada" fica 24h na memória (pode surgir depois).
+    if (result.found) await store(key, result);
+    return result;
   });
 }
 

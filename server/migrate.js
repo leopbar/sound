@@ -29,6 +29,13 @@ async function migrate() {
       ciphertext text NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+
+    -- Letras já encontradas no LRCLIB (resposta pronta da API), por chave da busca.
+    CREATE TABLE IF NOT EXISTS lyrics_cache (
+      key        text PRIMARY KEY,
+      data       jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
   `);
 }
 

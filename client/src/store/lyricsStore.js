@@ -72,6 +72,13 @@ export const useLyricsStore = create((set, get) => ({
     }
   },
 
+  /** Busca de novo a letra que falhou (botão "Tentar de novo" do painel). */
+  retry(track) {
+    if (!track || get().trackId !== track.id || get().status !== 'error') return;
+    set({ trackId: null });
+    get().load(track);
+  },
+
   /**
    * Carrega a letra da faixa e abre o painel (chamado quando ela começa a tocar).
    * Pausar/retomar a mesma faixa não reabre o painel se o usuário o fechou.

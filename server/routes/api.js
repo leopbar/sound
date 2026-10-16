@@ -60,7 +60,8 @@ router.get('/lyrics', rateLimit({ windowMs: 60_000, max: 60 }), wrap(async (req,
     duration: Number.isFinite(duration) && duration > 0 && duration < 7200 ? duration : null,
     kind: req.query.kind === 'video' ? 'video' : null,
   });
-  res.set('Cache-Control', 'private, max-age=3600').json(lyrics);
+  // "Não encontrada" não fica no navegador: o "Tentar de novo" e a próxima vez vão ao servidor.
+  res.set('Cache-Control', lyrics.found ? 'private, max-age=3600' : 'no-store').json(lyrics);
 }));
 
 // Tradução da letra (pt-BR). Recebe as linhas que o cliente já tem: { lines: string[] }.

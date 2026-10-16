@@ -179,7 +179,18 @@ export default function LyricsPanel() {
       </div>
     );
   } else if (status === 'error') {
-    body = <Message>{lyrics?.message || 'Não foi possível carregar a letra.'}</Message>;
+    body = (
+      <div className="py-[8vh] text-center">
+        <p className="text-lg text-zinc-400">{lyrics?.message || 'Não foi possível carregar a letra.'}</p>
+        <button
+          type="button"
+          onClick={() => useLyricsStore.getState().retry(track)}
+          className="mt-4 rounded-full bg-surface-700 px-4 py-2 text-sm text-zinc-200 transition hover:bg-surface-600 hover:text-white"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    );
   } else if (lyrics?.instrumental) {
     body = <Message>♪ Faixa instrumental ♪</Message>;
   } else if (lyrics?.synced) {
