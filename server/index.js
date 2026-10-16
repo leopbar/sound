@@ -14,6 +14,7 @@ const { pool } = require('./db');
 const apiRouter = require('./routes/api');
 const playlistsRouter = require('./routes/playlists');
 const adminRouter = require('./routes/admin');
+const sharesRouter = require('./routes/shares');
 const ytdlp = require('./services/ytdlp');
 const { requireAuth } = require('./middleware/requireAuth');
 const { HttpError } = require('./lib/errors');
@@ -38,6 +39,7 @@ app.all(`${api}/auth/*`, toNodeHandler(auth));
 app.get(`${api}/auth-config`, (req, res) => res.json(publicAuthConfig));
 app.use(`${api}/playlists`, requireAuth, playlistsRouter);
 app.use(`${api}/admin`, requireAuth, adminRouter);
+app.use(`${api}/shares`, requireAuth, sharesRouter);
 app.use(api, apiRouter);
 // Healthcheck do Docker (Dockerfile) num caminho fixo, qualquer que seja o subcaminho.
 if (config.basePath) app.get('/api/health', (req, res) => res.json({ ok: true }));

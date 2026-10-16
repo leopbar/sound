@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { authClient, authErrorMessage } from '../lib/authClient';
 import { Spinner } from './Icons';
 import { APP_BASE } from '../lib/base';
+import { confirmDialog } from '../lib/dialog';
 import { usePlayerStore, forgetPlayerState } from '../store/playerStore';
 
 const input =
@@ -121,8 +122,8 @@ function Passkeys() {
               <button
                 type="button"
                 disabled={state.busy}
-                onClick={() =>
-                  window.confirm('Remover esta passkey?') &&
+                onClick={async () =>
+                  (await confirmDialog({ title: 'Remover passkey', message: 'Remover esta passkey?', confirmLabel: 'Remover', danger: true })) &&
                   run(async () => {
                     unwrap(await authClient.passkey.deletePasskey({ id: p.id }));
                     await refresh();
@@ -251,9 +252,15 @@ function DeleteAccount({ hasPassword, userId }) {
   return (
     <Section title="Excluir conta" description="Apaga sua conta e todas as suas playlists. Não é possível desfazer." state={state}>
       <form
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          if (!window.confirm('Excluir sua conta e todas as playlists definitivamente?')) return;
+          const ok = await confirmDialog({
+            title: 'Excluir conta',
+            message: 'Excluir sua conta e todas as playlists definitivamente?',
+            confirmLabel: 'Excluir minha conta',
+            danger: true,
+          });
+          if (!ok) return;
           run(async () => {
             unwrap(await authClient.deleteUser(hasPassword ? { password } : {}));
             forgetPlayerState(userId);

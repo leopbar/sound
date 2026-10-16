@@ -36,6 +36,24 @@ async function migrate() {
       data       jsonb NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+
+    -- Convites para compartilhar uma playlist (o destinatário recebe uma cópia ao aceitar).
+    -- sender_seen: o remetente já viu a resposta (aceito/recusado).
+    CREATE TABLE IF NOT EXISTS playlist_share (
+      id            text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      sender_id     text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      recipient_id  text NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      playlist_id   text REFERENCES playlist(id) ON DELETE SET NULL,
+      playlist_name text NOT NULL,
+      status        text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined')),
+      sender_seen   boolean NOT NULL DEFAULT false,
+      created_at    timestamptz NOT NULL DEFAULT now(),
+      responded_at  timestamptz
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS playlist_share_pending_idx
+      ON playlist_share (playlist_id, recipient_id) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS playlist_share_recipient_idx ON playlist_share (recipient_id) WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS playlist_share_sender_idx ON playlist_share (sender_id) WHERE NOT sender_seen;
   `);
 }
 

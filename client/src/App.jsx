@@ -8,6 +8,9 @@ import AccountView from './components/AccountView';
 import AdminView from './components/AdminView';
 import ForcePasswordChange from './components/ForcePasswordChange';
 import InstallButton from './components/InstallButton';
+import DialogHost from './components/DialogHost';
+import ShareInbox from './components/ShareInbox';
+import ValidationBubble from './components/ValidationBubble';
 import { Spinner } from './components/Icons';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { usePlaylistStore } from './store/playlistStore';
@@ -35,9 +38,19 @@ export default function App() {
       </div>
     );
   }
-  if (!session) return <AuthScreen config={config} />;
-  if (session.user.mustChangePassword) return <ForcePasswordChange user={session.user} />;
-  return <Player key={session.user.id} session={session} config={config} />;
+  return (
+    <>
+      {!session ? (
+        <AuthScreen config={config} />
+      ) : session.user.mustChangePassword ? (
+        <ForcePasswordChange user={session.user} />
+      ) : (
+        <Player key={session.user.id} session={session} config={config} />
+      )}
+      <DialogHost />
+      <ValidationBubble />
+    </>
+  );
 }
 
 function Player({ session, config }) {
@@ -93,6 +106,7 @@ function Player({ session, config }) {
       </main>
 
       <PlayerBar />
+      <ShareInbox />
     </div>
   );
 }

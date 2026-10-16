@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { authClient, authErrorMessage } from '../lib/authClient';
 import { adminApi } from '../lib/api';
+import { confirmDialog, promptDialog } from '../lib/dialog';
 import { Spinner } from './Icons';
 
 const PAGE = 50;
@@ -118,9 +119,15 @@ export default function AdminView({ currentUserId }) {
       !self && {
         label: u.banned ? 'Reativar' : 'Suspender',
         danger: !u.banned,
-        run: () => {
+        run: async () => {
           if (u.banned) return act(u, async () => unwrap(await authClient.admin.unbanUser({ userId: u.id })), `${u.email} reativado.`);
-          const reason = window.prompt(`Suspender ${u.email}? Motivo (opcional):`);
+          const reason = await promptDialog({
+            title: 'Suspender usuário',
+            message: `Suspender ${u.email}? A pessoa é desconectada de todos os aparelhos.`,
+            label: 'Motivo (opcional)',
+            confirmLabel: 'Suspender',
+            danger: true,
+          });
           if (reason === null) return;
           return act(u, async () => unwrap(await authClient.admin.banUser({ userId: u.id, banReason: reason || undefined })), `${u.email} suspenso e desconectado.`);
         },
@@ -136,8 +143,12 @@ export default function AdminView({ currentUserId }) {
         },
       !self && {
         label: 'Nova senha temporária',
-        run: () =>
-          window.confirm(`Gerar uma nova senha temporária para ${u.email}? A senha atual deixa de valer e as sessões são encerradas.`) &&
+        run: async () =>
+          (await confirmDialog({
+            title: 'Nova senha temporária',
+            message: `Gerar uma nova senha temporária para ${u.email}? A senha atual deixa de valer e as sessões são encerradas.`,
+            confirmLabel: 'Gerar senha',
+          })) &&
           act(u, async () => {
             const { password } = await adminApi.resetTempPassword(u.id);
             setTemp({ email: u.email, password, title: 'Nova senha temporária' });
@@ -150,8 +161,13 @@ export default function AdminView({ currentUserId }) {
       !self && {
         label: 'Excluir',
         danger: true,
-        run: () =>
-          window.confirm(`Excluir ${u.email} e todas as playlists dessa conta? Não é possível desfazer.`) &&
+        run: async () =>
+          (await confirmDialog({
+            title: 'Excluir usuário',
+            message: `Excluir ${u.email} e todas as playlists dessa conta? Não é possível desfazer.`,
+            confirmLabel: 'Excluir',
+            danger: true,
+          })) &&
           act(u, async () => unwrap(await authClient.admin.removeUser({ userId: u.id })), `${u.email} excluído.`),
       },
     ].filter(Boolean);

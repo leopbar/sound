@@ -210,4 +210,4 @@ router.post('/:id/restore-order', wrap(async (req, res) => {
   }));
 }));
 
-module.exports = router;
+module.exports = Object.assign(router, { insertPlaylist });

@@ -3,8 +3,10 @@ import { usePlaylistStore } from '../store/playlistStore';
 import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
 import { formatTime } from '../lib/format';
 import { useSortable } from '../lib/useSortable';
+import { confirmDialog } from '../lib/dialog';
 import Artwork from './Artwork';
-import { PlayIcon, PauseIcon, ShuffleIcon, RestoreIcon, GripIcon, Spinner } from './Icons';
+import ShareDialog from './ShareDialog';
+import { PlayIcon, PauseIcon, ShuffleIcon, RestoreIcon, GripIcon, ShareIcon, Spinner } from './Icons';
 
 function CreateForm() {
   const create = usePlaylistStore((s) => s.create);
@@ -43,6 +45,7 @@ function PlaylistDetail({ playlist, onBack }) {
   const { playQueue, toggle } = usePlayerStore.getState();
   const [name, setName] = useState(playlist.name);
   const [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const { drag, rowProps, handleProps } = useSortable({
     count: playlist.tracks.length,
     onMove: (from, to) => moveTrack(playlist.id, from, to),
@@ -61,9 +64,20 @@ function PlaylistDetail({ playlist, onBack }) {
 
   return (
     <div>
-      <button type="button" onClick={onBack} className="mb-4 text-sm text-zinc-400 hover:text-white">
-        ← Playlists
-      </button>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <button type="button" onClick={onBack} className="text-sm text-zinc-400 hover:text-white">
+          ← Playlists
+        </button>
+        <button
+          type="button"
+          onClick={() => setSharing(true)}
+          title="Compartilhar esta lista com outro usuário"
+          className="flex items-center gap-1.5 rounded-full bg-surface-700 px-4 py-1.5 text-sm font-medium hover:bg-surface-600"
+        >
+          <ShareIcon className="h-4 w-4" /> Compartilhar
+        </button>
+      </div>
+      {sharing && <ShareDialog playlist={playlist} onClose={() => setSharing(false)} />}
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -105,8 +119,14 @@ function PlaylistDetail({ playlist, onBack }) {
         )}
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm(`Excluir a playlist “${playlist.name}”?`)) {
+          onClick={async () => {
+            const ok = await confirmDialog({
+              title: 'Excluir playlist',
+              message: `Excluir a playlist “${playlist.name}”?`,
+              confirmLabel: 'Excluir',
+              danger: true,
+            });
+            if (ok) {
               remove(playlist.id);
               onBack();
             }

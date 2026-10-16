@@ -63,6 +63,18 @@ export const playlistsApi = {
   restoreOrder: (id) => request(`${pl(id)}/restore-order`, { method: 'POST', body: {} }),
 };
 
+/** Compartilhamento de playlists entre usuários (o destinatário recebe uma cópia ao aceitar). */
+const share = (id) => `/api/shares/${encodeURIComponent(id)}`;
+
+export const sharesApi = {
+  users: () => request('/api/shares/users').then((r) => r.users),
+  send: (playlistId, userId) => request('/api/shares', { method: 'POST', body: { playlistId, userId } }),
+  inbox: () => request('/api/shares/inbox'),
+  accept: (id) => request(`${share(id)}/accept`, { method: 'POST', body: {} }).then((r) => r.playlist),
+  decline: (id) => request(`${share(id)}/decline`, { method: 'POST', body: {} }),
+  seen: (id) => request(`${share(id)}/seen`, { method: 'POST', body: {} }),
+};
+
 /** Admin: cadastro de usuários e senhas temporárias (troca obrigatória no próximo login). */
 const adminUser = (id) => `/api/admin/users/${encodeURIComponent(id)}`;
 
