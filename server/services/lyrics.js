@@ -5,7 +5,7 @@ const axios = require('axios');
 const config = require('../config');
 const { pool } = require('../db');
 const { remember } = require('../lib/cache');
-const { normalize, tokenCoverage } = require('../lib/text');
+const { normalize, tokens, tokenCoverage } = require('../lib/text');
 const { HttpError } = require('../lib/errors');
 
 const LYRICS_TTL = 60 * 60 * 24; // memória; letras encontradas também ficam no banco (lyrics_cache)
@@ -28,13 +28,36 @@ const http = axios.create({
 const NOISE =
   /\s*[([【][^)\]】]*(official|oficial|video|vídeo|clipe|lyric|letra|audio|áudio|visualizer|hd|4k|remaster|ao vivo|live|mv)[^)\]】]*[)\]】]/gi;
 
+// Sobras sem parênteses no fim: "Música remastered version 1984", "Música - Remastered 2011".
+// Só sai a sequência final que tiver ao menos uma palavra "forte" (ano/hd sozinhos ficam: "1999").
+const TRAILING_STRONG = new Set([
+  'remaster', 'remastered', 'remasterizado', 'remasterizada', 'version', 'versao',
+  'official', 'oficial', 'video', 'videoclip', 'clipe', 'lyric', 'lyrics', 'letra', 'legendado',
+  'legendada', 'traducao', 'audio', 'visualizer',
+]);
+const TRAILING_WEAK = new Set(['hd', 'hq', '4k', 'mv', 'music', 'clip', 'full', 'original', 'new']);
+
+function stripTrailingNoise(title) {
+  const words = title.split(/\s+/);
+  let keep = words.length;
+  let strong = false;
+  for (let i = words.length - 1; i > 0; i--) {
+    const w = normalize(words[i]);
+    if (TRAILING_STRONG.has(w)) strong = true;
+    else if (w && !TRAILING_WEAK.has(w) && !/^(19|20)\d\d$/.test(w)) break;
+    if (strong) keep = i;
+  }
+  return words.slice(0, keep).join(' ').replace(/\s*[-–—:,]+$/, '').trim();
+}
+
 function cleanTitle(title) {
-  return String(title || '')
+  const clean = String(title || '')
     .replace(NOISE, '')
     .replace(/\s*[|｜].*$/, '') // "Música | Clipe Oficial"
     .replace(/\s+(feat\.?|ft\.?|featuring)\s.*$/i, '')
     .replace(/["“”]/g, '')
     .trim();
+  return stripTrailingNoise(clean);
 }
 
 function cleanChannel(channel) {
@@ -71,11 +94,15 @@ function parseLrc(lrc) {
 
 /* ----------------------------- busca ----------------------------- */
 
-/** Pontua um resultado do LRCLIB contra o que está tocando (0 = descartar). */
-function score(item, want) {
+/**
+ * Pontua um resultado do LRCLIB contra o que está tocando (0 = descartar).
+ * `within` (busca pelo começo do título): o nome inteiro da música tem que estar no título completo.
+ */
+function score(item, want, within) {
   const titleCov = tokenCoverage(want.title, item.trackName);
   const artistCov = tokenCoverage(want.artist, item.artistName);
   if (titleCov < 0.6 || artistCov < 0.5) return 0;
+  if (within && tokenCoverage(item.trackName, within) < 0.8) return 0;
   let s = titleCov * 2 + artistCov;
   if (want.duration && item.duration) {
     const diff = Math.abs(item.duration - want.duration);
@@ -149,7 +176,7 @@ function unavailable(want, err) {
   return new HttpError(502, 'LYRICS_UNAVAILABLE', 'Serviço de letras indisponível no momento.');
 }
 
-async function fuzzyMatch(want) {
+async function fuzzyMatch(want, within) {
   let data;
   try {
     data = await lrclib('/search', { track_name: want.title, artist_name: want.artist });
@@ -159,16 +186,26 @@ async function fuzzyMatch(want) {
   let best = null;
   let bestScore = 0;
   for (const item of Array.isArray(data) ? data : []) {
-    const s = score(item, want);
+    const s = score(item, want, within);
     if (s > bestScore) [best, bestScore] = [item, s];
   }
   return best;
 }
 
+/** Metade inicial do título (mín. 2 palavras), para a nova tentativa; null se já é curto. */
+function shorterTitle(title) {
+  const words = title.split(/\s+/);
+  if (tokens(title).length < 3) return null;
+  return words.slice(0, Math.max(2, Math.ceil(words.length / 2))).join(' ');
+}
+
 async function lookup(want) {
   const exact = await exactMatch(want);
   if (exact.item) return toResult(exact.item);
-  const best = await fuzzyMatch(want);
+  let best = await fuzzyMatch(want);
+  // Título com sobras que a limpeza não pegou: nova busca pelo começo dele.
+  const short = shorterTitle(want.title);
+  if (!best && short) best = await fuzzyMatch({ ...want, title: short }, want.title);
   // Sem resultado na busca aproximada, mas o /get falhou: pode existir. Não vira "não encontrada".
   if (!best && exact.failed) throw unavailable(want, exact.failed);
   return toResult(best);
