@@ -42,6 +42,7 @@ jobs:
         working-directory: server
         run: |
           npm ci --omit=dev
+          node --test test/*.test.js
           find . -name '*.js' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check
       - name: Script de deploy — sintaxe
         run: bash -n scripts/deploy.sh

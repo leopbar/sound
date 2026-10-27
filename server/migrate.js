@@ -37,6 +37,13 @@ async function migrate() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
 
+    -- Traduções completas, reutilizadas entre usuários e reinícios.
+    CREATE TABLE IF NOT EXISTS translation_cache (
+      key        text PRIMARY KEY,
+      data       jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+
     -- Convites para compartilhar uma playlist (o destinatário recebe uma cópia ao aceitar).
     -- sender_seen: o remetente já viu a resposta (aceito/recusado).
     CREATE TABLE IF NOT EXISTS playlist_share (

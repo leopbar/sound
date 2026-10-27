@@ -208,7 +208,7 @@ export default function LyricsPanel() {
       {status === 'ready' && lyrics?.found && (
         <p className="pb-6 text-xs text-zinc-600">
           Letra: {lyrics.source}
-          {translations && ' · Tradução: Google Tradutor'}
+          {translations && ' · Tradução: LibreTranslate'}
           {translatable && translateOn && translation?.status === 'error' && (
             <span className="text-red-400/80"> · {translation.message || 'Tradução indisponível.'}</span>
           )}

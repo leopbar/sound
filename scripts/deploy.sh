@@ -46,7 +46,8 @@ main() {
   fi
 
   echo "Construindo e subindo o stack…"
-  docker compose up -d --build --remove-orphans --wait --wait-timeout 180
+  # A primeira subida do tradutor baixa os modelos de idiomas para um volume persistente.
+  docker compose up -d --build --remove-orphans --wait --wait-timeout 1200
 
   # Confere o caminho completo nginx → Express (inclui o BASE_PATH).
   local ok=""

@@ -25,6 +25,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      libretranslate:
+        # A inicialização do player não espera o carregamento dos modelos de tradução.
+        condition: service_started
     env_file:
       - path: .env
         required: false
@@ -40,6 +43,33 @@ services:
       # Cookies do YouTube para o yt-dlp (YTDLP_COOKIES_FILE=/secrets/youtube-cookies.txt no .env).
       # Gravável: o yt-dlp atualiza os cookies que o YouTube renova. Fora do git.
       - ./secrets:/secrets
+
+  libretranslate:
+    image: libretranslate/libretranslate@sha256:cf85439147da3cf73fb525a303cfeb884946a9bc633083143bd771d6c6efb007
+    restart: unless-stopped
+    # Apenas rede Docker; a API pública continua exigindo login no Sound.
+    expose:
+      - "5000"
+    environment:
+      LT_LOAD_ONLY: en,es,fr,de,it,pt,pb
+      LT_DISABLE_WEB_UI: "true"
+      LT_THREADS: "2"
+      LT_BATCH_LIMIT: "50"
+      LT_CHAR_LIMIT: "4000"
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "1"
+    cpus: 1.5
+    # Menor prioridade de CPU que o player e os demais serviços quando há disputa.
+    cpu_shares: 256
+    mem_limit: 2g
+    volumes:
+      - translation_models:/home/libretranslate/.local
+    healthcheck:
+      test: ["CMD", "./venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15m
+      retries: 5
 
   client:
     build:
@@ -74,6 +104,7 @@ services:
       - caddy_config:/config
 
 volumes:
+  translation_models:
   pgdata:
   caddy_data:
   caddy_config:

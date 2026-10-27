@@ -93,6 +93,26 @@ SSH e roda `scripts/deploy.sh` (atualiza o clone para o commit do push, reconstr
 
 Deploy manual no servidor: `./scripts/deploy.sh` (última `main`) ou `./scripts/deploy.sh <sha>`.
 
+## Tradução das letras
+
+O compose principal inclui o **LibreTranslate**, sem porta publicada, acessível apenas na rede
+Docker. A API do Sound exige login e envia as linhas em lotes para manter a letra sincronizada.
+As traduções completas ficam no PostgreSQL (`translation_cache`) e são reutilizadas após reinícios.
+
+Na primeira subida, os modelos são baixados para o volume `translation_models`; esse processo
+pode levar vários minutos. O serviço tem limite de 2 GB de RAM e 1,5 CPU. Verifique o progresso
+com `docker compose logs -f libretranslate`. O player não espera os modelos carregarem para iniciar;
+a tradução tem menor prioridade de CPU quando outros serviços precisam do processador.
+Os idiomas carregados são inglês, espanhol, francês,
+alemão, italiano e português, incluindo o modelo brasileiro. Outros idiomas exigem ajustar
+`LT_LOAD_ONLY` no compose. A qualidade depende dos modelos instalados.
+
+`LIBRETRANSLATE_URL` configura outra instância (padrão `http://libretranslate:5000`);
+`LIBRETRANSLATE_TARGET` seleciona o destino (padrão `pt-BR`), e `LIBRETRANSLATE_API_KEY` é opcional.
+No compose de desenvolvimento, inicie uma instância separada e configure uma URL acessível ao backend.
+
+Testes do serviço: `cd server && npm test`.
+
 ## Autenticação
 
 [Better Auth](https://www.better-auth.com), self-hosted no próprio backend (nenhum serviço externo, nenhum custo por usuário):
