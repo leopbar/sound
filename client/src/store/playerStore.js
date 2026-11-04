@@ -23,13 +23,26 @@ function writeJSON(key, value) {
   }
 }
 
-function loadVolume() {
+/**
+ * Celular/tablet (toque): sem controle de volume na tela; quem manda é o botão do aparelho (o iOS
+ * nem deixa o site mudar o volume). Um volume baixo salvo ali (a barra aparece com o celular
+ * deitado) deixava a música tocando muda sem ter como ver ou desfazer.
+ */
+export const HAS_VOLUME_CONTROL = !window.matchMedia?.('(pointer: coarse)').matches;
+
+/** Volume salvo no aparelho, como texto (para o diário). */
+function savedVolume() {
   try {
-    const v = parseFloat(localStorage.getItem(VOLUME_KEY));
-    return Number.isFinite(v) ? v : 0.8;
+    return localStorage.getItem(VOLUME_KEY);
   } catch {
-    return 0.8;
+    return null;
   }
+}
+
+function loadVolume() {
+  if (!HAS_VOLUME_CONTROL) return 1;
+  const v = parseFloat(savedVolume());
+  return Number.isFinite(v) ? v : 0.8;
 }
 
 function readLockSkip() {
@@ -151,7 +164,7 @@ export const usePlayerStore = create((set, get) => {
       const pos = readJSON(posKey());
       const t = pos?.id === track.id && Number.isFinite(pos.t) && pos.t > 0 ? pos.t : 0;
       set({ queue: saved.queue, index, status: 'paused', currentTime: t, resumeAt: t, duration: track.duration || 0 });
-      logEvent('boot', { id: track.id, pos: Math.round(t), was: pos?.playing ? 'playing' : 'paused' });
+      logEvent('boot', { id: track.id, pos: Math.round(t), was: pos?.playing ? 'playing' : 'paused', vol: savedVolume() ?? 'none' });
     },
 
     /** Guarda a posição (no máximo a cada 5 s, ou já com `force`). */
@@ -306,7 +319,16 @@ export const usePlayerStore = create((set, get) => {
       const track = current();
       if (pendingStart && pendingStart.id === track?.id) {
         const { at, src, pos, retry } = pendingStart;
-        logEvent('start', { id: track.id, ms: Math.round(performance.now() - at), src, ...(pos && { pos }), ...(retry && { retry: 1 }) });
+        // vol/ctx: diagnóstico de "toca mas não sai som" (volume do app, estado do AudioContext).
+        logEvent('start', {
+          id: track.id,
+          ms: Math.round(performance.now() - at),
+          src,
+          ...(pos && { pos }),
+          ...(retry && { retry: 1 }),
+          vol: engine.effectiveVolume,
+          ctx: engine.graphState,
+        });
       }
       pendingStart = null;
       if (recovery && track && recovery.id === track.id) {

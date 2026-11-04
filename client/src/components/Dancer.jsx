@@ -138,6 +138,12 @@ export default function Dancer({ className = 'items-center' }) {
     return stop;
   }, [track?.id, playing]);
 
+  // Lê os analisadores do áudio (intensidade e batida ao vivo): pede o grafo da Web Audio.
+  useEffect(() => {
+    engine.wantGraph(true);
+    return () => engine.wantGraph(false);
+  }, []);
+
   // Desmontou porque o dançarino foi desligado (não por troca de layout): para o download.
   useEffect(() => () => {
     if (!useDancerStore.getState().on) cancelBeatGrid();

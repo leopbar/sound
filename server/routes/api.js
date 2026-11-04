@@ -86,7 +86,7 @@ router.post(
 // começar a tocar). Só vai para o log do servidor (`[client]`), para diagnosticar o celular.
 const CLIENT_EVENTS = new Set([
   'boot', 'pause', 'error', 'retry', 'resumed', 'gaveup', 'skip', 'stall',
-  'offline', 'online', 'hidden', 'visible', 'next', 'prev', 'ended', 'blocked', 'seek', 'prefetch', 'start',
+  'offline', 'online', 'hidden', 'visible', 'next', 'prev', 'ended', 'blocked', 'seek', 'prefetch', 'start', 'audio',
 ]);
 const logValue = (v) => String(v).replace(/[^\w.:-]/g, '_').slice(0, 40);
 // O aparelho reenvia quando a resposta se perde (queda de rede, página fechando): descarta repetidos.

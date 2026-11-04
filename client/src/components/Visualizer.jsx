@@ -14,6 +14,13 @@ export default function Visualizer({ className = '', bars = 32 }) {
     let raf;
     let data;
     const heights = new Float32Array(bars);
+    // Só pede o grafo da Web Audio enquanto aparece na tela (fica escondido no celular).
+    let shown = false;
+    const show = (on) => {
+      if (on !== shown) engine.wantGraph((shown = on));
+    };
+    const ro = new ResizeObserver(() => show(canvas.clientWidth > 0));
+    ro.observe(canvas);
 
     const draw = () => {
       raf = requestAnimationFrame(draw);
@@ -51,7 +58,11 @@ export default function Visualizer({ className = '', bars = 32 }) {
       }
     };
     draw();
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      show(false);
+    };
   }, [playing, bars]);
 
   return <canvas ref={canvasRef} className={className} aria-hidden />;

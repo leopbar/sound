@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { usePlayerStore, selectCurrentTrack } from '../store/playerStore';
+import { usePlayerStore, selectCurrentTrack, HAS_VOLUME_CONTROL } from '../store/playerStore';
 import { useLyricsStore } from '../store/lyricsStore';
 import { useDancerStore } from '../store/dancerStore';
 import { formatTime, SOURCE_LABEL } from '../lib/format';
@@ -202,7 +202,7 @@ export default function PlayerBar() {
           <Visualizer className="hidden h-10 w-32 lg:block" />
           <LyricsButton track={track} />
           <DancerButton track={track} />
-          <Volume />
+          {HAS_VOLUME_CONTROL && <Volume />}
         </div>
       </div>
       <div className="px-4 pb-2 md:hidden">

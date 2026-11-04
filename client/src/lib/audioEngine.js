@@ -1,6 +1,13 @@
+import { logEvent } from './playerLog';
+
 /**
  * Singleton que encapsula o <audio> nativo e o grafo da Web Audio API.
  * Fica fora do React para sobreviver a re-renders e ao StrictMode.
+ *
+ * O grafo (AudioContext + analisadores) só é criado quando alguém precisa analisar o som
+ * (visualizador na tela, dançarino ligado): `createMediaElementSource` desvia para sempre a saída
+ * do <audio> para o AudioContext, e um contexto parado ou com defeito no aparelho deixa a música
+ * tocando muda. Sem quem analise, o <audio> toca direto, como em qualquer site.
  */
 class AudioEngine {
   constructor() {
@@ -11,17 +18,36 @@ class AudioEngine {
     this.ctx = null;
     this.analyser = null;
     this.beatAnalyser = null;
+    this.graphUsers = 0; // componentes que leem os analisadores
+    this.ctxRan = false; // o contexto já chegou a tocar (daí em diante, mudanças vão para o diário)
+    // Contexto parado com o <audio> tocando = música muda: tenta retomar.
+    this.audio.addEventListener('playing', () => this.resumeGraph());
+  }
+
+  /** Estado do áudio para o diário: `none` sem grafo (o <audio> toca direto). */
+  get graphState() {
+    return this.ctx ? this.ctx.state : 'none';
+  }
+
+  /**
+   * Visualizador/dançarino avisam que precisam (ou não) dos analisadores. O grafo nasce no próximo
+   * play (gesto do usuário) ou já, se a música estiver tocando; depois de criado, fica.
+   */
+  wantGraph(on) {
+    this.graphUsers = Math.max(0, this.graphUsers + (on ? 1 : -1));
+    if (on && !this.audio.paused) this.ensureGraph();
   }
 
   /** O AudioContext só pode ser criado/retomado após um gesto do usuário. */
   ensureGraph() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      this.resumeGraph();
       return;
     }
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
     this.ctx = new Ctx();
+    this.ctx.addEventListener('statechange', () => this.onGraphState());
     const source = this.ctx.createMediaElementSource(this.audio);
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
@@ -34,6 +60,26 @@ class AudioEngine {
     source.connect(this.beatAnalyser);
     this.beatAnalyser.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
+    this.resumeGraph();
+  }
+
+  /** Retoma o contexto se ele parou (ou nasceu parado) enquanto há música tocando. */
+  resumeGraph() {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === 'running' || ctx.state === 'closed') return;
+    ctx.resume().catch(() => {
+      /* sem permissão agora: tenta de novo no próximo play/gesto */
+    });
+  }
+
+  onGraphState() {
+    const { state } = this.ctx;
+    if (state === 'running' && !this.ctxRan) {
+      this.ctxRan = true; // início normal (nasce 'suspended' e passa a 'running'): não registra
+      return;
+    }
+    logEvent('audio', { st: state, pos: Math.round(this.audio.currentTime), paused: this.audio.paused ? 1 : 0 });
+    if (state !== 'running' && !this.audio.paused) this.resumeGraph();
   }
 
   /**
@@ -52,7 +98,8 @@ class AudioEngine {
   }
 
   async play() {
-    this.ensureGraph();
+    // Grafo já criado: a saída passa por ele, então precisa estar rodando.
+    if (this.ctx || this.graphUsers > 0) this.ensureGraph();
     try {
       await this.audio.play();
     } catch (err) {
@@ -75,6 +122,11 @@ class AudioEngine {
 
   setMuted(m) {
     this.audio.muted = m;
+  }
+
+  /** Volume que de fato sai (0 = mudo), para o diário. */
+  get effectiveVolume() {
+    return this.audio.muted ? 0 : Math.round(this.audio.volume * 100) / 100;
   }
 }
 
