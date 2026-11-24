@@ -83,7 +83,7 @@ def send(message):
 
 def main():
     resolver = Resolver()
-    send({'ready': True})
+    send({'ready': True, 'version': yt_dlp.version.__version__})
     for line in sys.stdin:
         if not line.strip():
             continue

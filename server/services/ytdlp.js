@@ -6,19 +6,24 @@
  *  - processos permanentes (ytdlp_worker.py; YTDLP_WORKERS, padrão 2): ~1,2 s por vídeo;
  *  - linha de comando, um processo por vídeo (~3 s, ~0,9 s só para o Python subir): reserva quando
  *    nenhum processo permanente está livre, quando ele cai ou trava, e com YTDLP_WORKERS=0.
+ *
+ * Os dois usam a mesma versão: a da imagem ou a instalada pela atualização automática
+ * (ytdlpUpdate.js, via PYTHONPATH). Com a CPU disputada, o desafio JS do YouTube (node) pode levar
+ * ~10 s, por isso os limites folgados. Cada processo roda no próprio grupo: no tempo esgotado, o
+ * node do desafio morre junto (antes ficava gastando CPU e virava zumbi).
  */
 const path = require('path');
 const readline = require('readline');
-const { execFile, spawn } = require('child_process');
+const { spawn } = require('child_process');
+const update = require('./ytdlpUpdate');
 
-const BIN = process.env.YTDLP_PATH || 'yt-dlp';
 const PYTHON = process.env.YTDLP_PYTHON || 'python3';
 const WORKER_SCRIPT = path.join(__dirname, 'ytdlp_worker.py');
 const workersEnv = parseInt(process.env.YTDLP_WORKERS, 10);
 const POOL_SIZE = Number.isFinite(workersEnv) && workersEnv >= 0 ? Math.min(workersEnv, 8) : 2;
 
-const CLI_TIMEOUT_MS = 30_000;
-const WORKER_TIMEOUT_MS = 20_000;
+const CLI_TIMEOUT_MS = 40_000;
+const WORKER_TIMEOUT_MS = 35_000;
 const WORKER_MAX_JOBS = 300; // recicla de tempos em tempos (a memória do yt-dlp cresce com o uso)
 const RESPAWN_MS = [1000, 5000, 30_000, 120_000]; // depois de quedas seguidas
 const FORMAT = 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio';
@@ -53,22 +58,26 @@ function toSource(fmt) {
 
 let available;
 
-function run(args) {
-  return new Promise((resolve, reject) => {
-    execFile(BIN, args, { timeout: CLI_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 }, (err, stdout, stderr) => {
-      // A última linha "ERROR: ..." é a mensagem útil.
-      if (err) return reject(Object.assign(errorFrom(stderr, err.message), { code: err.code }));
-      resolve(stdout);
-    });
-  });
+// YTDLP_PATH: outro executável do yt-dlp; padrão, o módulo do Python (respeita o PYTHONPATH).
+const cli = (args) => (process.env.YTDLP_PATH ? [process.env.YTDLP_PATH, args] : [PYTHON, ['-m', 'yt_dlp', ...args]]);
+
+async function run(args) {
+  try {
+    const { stdout } = await update.exec(...cli(args), { timeout: CLI_TIMEOUT_MS, envVars: update.env() });
+    return stdout;
+  } catch (err) {
+    if (err.timedOut) update.checkSoon('linha de comando sem resposta');
+    // A última linha "ERROR: ..." é a mensagem útil.
+    throw Object.assign(errorFrom(err.stderr || '', err.message), { code: err.code });
+  }
 }
 
 async function isAvailable() {
   if (available === undefined) {
-    available = await run(['--version']).then(
-      (v) => (console.log(`[ytdlp] yt-dlp ${v.trim()} disponível (${POOL_SIZE} processos permanentes)`), true),
-      () => (console.warn('[ytdlp] yt-dlp não encontrado; stream do YouTube desativado.'), false)
-    );
+    const version = await update.init().catch(() => null);
+    available = Boolean(version);
+    if (available) console.log(`[ytdlp] yt-dlp ${version} disponível (${POOL_SIZE} processos permanentes)`);
+    else console.warn('[ytdlp] yt-dlp não encontrado; stream do YouTube desativado.');
   }
   return available;
 }
@@ -89,6 +98,7 @@ async function resolveWithCli(videoId) {
 class WorkerUnavailable extends Error {}
 
 const workers = new Set();
+let loggedVersion = null;
 let jobSeq = 0;
 let crashesInRow = 0;
 let respawnTimer = null;
@@ -102,7 +112,8 @@ class Worker {
     this.jobs = 0;
     this.killReason = null;
     this.lastStderr = '';
-    this.proc = spawn(PYTHON, [WORKER_SCRIPT], { stdio: ['pipe', 'pipe', 'pipe'] });
+    // Grupo próprio (detached): kill() derruba também o node que o yt-dlp abre para os desafios.
+    this.proc = spawn(PYTHON, [WORKER_SCRIPT], { stdio: ['pipe', 'pipe', 'pipe'], env: update.env(), detached: true });
     this.proc.stdin.on('error', () => {}); // EPIPE se o processo morreu: tratado no 'close'
     readline.createInterface({ input: this.proc.stdout }).on('line', (line) => this.onLine(line));
     readline.createInterface({ input: this.proc.stderr }).on('line', (line) => {
@@ -134,6 +145,10 @@ class Worker {
     }
     if (msg.ready) {
       this.ready = true;
+      if (msg.version && msg.version !== loggedVersion) {
+        loggedVersion = msg.version;
+        console.log(`[ytdlp] processos permanentes com o yt-dlp ${msg.version}`);
+      }
       return;
     }
     const { job } = this;
@@ -154,7 +169,13 @@ class Worker {
 
   kill(reason) {
     this.killReason = reason;
-    this.proc.kill('SIGKILL');
+    try {
+      process.kill(-this.proc.pid, 'SIGKILL');
+    } catch {
+      this.proc.kill('SIGKILL');
+    }
+    // Travar costuma ser o yt-dlp velho diante de um YouTube novo.
+    update.checkSoon(`processo permanente ${reason}`);
   }
 
   onExit(reason) {
@@ -193,7 +214,10 @@ function scheduleRespawn() {
 
 /** Na subida do servidor: deixa os processos permanentes prontos antes do primeiro play. */
 async function start() {
-  if (POOL_SIZE && (await isAvailable())) spawnWorkers();
+  if (!(await isAvailable())) return;
+  if (POOL_SIZE) spawnWorkers();
+  // Versão nova instalada: troca os processos permanentes (a linha de comando já usa a nova).
+  update.schedule(() => recycle());
 }
 
 /** O processo permanente errou onde a linha de comando acertou: troca todos (estado velho). */
@@ -224,4 +248,9 @@ async function resolveAudio(videoId, { priority = 'high', cli = false } = {}) {
   }
 }
 
-module.exports = { isAvailable, start, recycle, resolveAudio };
+/** Falha que não é do vídeo (formato sumiu, desafio, anti-bot...): talvez o yt-dlp esteja velho. */
+function suspectOutdated(reason) {
+  update.checkSoon(reason);
+}
+
+module.exports = { isAvailable, start, recycle, resolveAudio, suspectOutdated };

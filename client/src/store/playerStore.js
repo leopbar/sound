@@ -80,7 +80,8 @@ export function forgetPlayerState(id) {
 const RETRY_DELAYS = [1000, 2000, 4000, 8000, 15_000, 30_000];
 const OFFLINE_CHECK_MS = 30_000;
 // Carregando sem sair do lugar por este tempo (primeira carga ou travada no meio): recarrega.
-const STALL_MS = 30_000;
+// Folgado: com o servidor ocupado, o yt-dlp pode levar ~20 s só para achar o áudio.
+const STALL_MS = 45_000;
 // Baixa a próxima faixa para a memória quando a atual já está toda baixada ou falta pouco.
 const PREFETCH_REMAINING_S = 90;
 

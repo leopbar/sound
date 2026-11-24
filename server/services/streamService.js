@@ -119,6 +119,7 @@ async function resolveSource(videoId, priority) {
     entry = await ytdlp.resolveAudio(videoId, { priority });
   } catch (err) {
     const classified = toStreamError(err, videoId);
+    if (!FATAL.has(classified.code)) ytdlp.suspectOutdated(`falha ${classified.code} em ${videoId}`);
     if (err.via !== 'worker' || FATAL.has(classified.code)) throw classified;
     // Reserva: o processo permanente errou onde a linha de comando pode acertar (estado velho dele).
     try {

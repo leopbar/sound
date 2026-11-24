@@ -167,6 +167,8 @@ docker compose -f docker-compose.dev.yml up
 | `JAMENDO_CLIENT_ID` | Opcional. Necessário só para tocar faixas do Jamendo já salvas em playlists. |
 | `YTDLP_COOKIES_FILE` | Opcional. Arquivo de cookies (formato Netscape) caso o YouTube exija verificação anti-bot. |
 | `YTDLP_WORKERS` | Opcional. Processos permanentes do yt-dlp (padrão 2; `0` = só a linha de comando). |
+| `YTDLP_AUTO_UPDATE` | Opcional. `0` desliga a atualização automática do yt-dlp (padrão: ligada). |
+| `YTDLP_UPDATE_HOURS` | Opcional. Intervalo, em horas, entre as conferências de versão nova do yt-dlp (padrão 6). |
 
 ## API
 
@@ -200,7 +202,7 @@ O frontend lê essa mensagem, mostra um aviso e pula para a próxima faixa da fi
 
 ## Decisões de arquitetura
 
-- **yt-dlp sempre aberto.** O áudio do YouTube é resolvido pelo **yt-dlp** (instalado na imagem, usando o Node como runtime JS). Ele fica aberto em processos permanentes (`ytdlp_worker.py`, ~1,2 s por música em vez de ~3 s abrindo um processo a cada vez), com a linha de comando como reserva se nenhum estiver livre ou se um cair. O `ytdl-core` (`@distube/ytdl-core`) foi removido: o repositório foi arquivado em ago/2025 e ele falhava sempre. Quando o YouTube mudar de novo, atualize com `docker compose build --no-cache server`.
+- **yt-dlp sempre aberto.** O áudio do YouTube é resolvido pelo **yt-dlp** (instalado na imagem, usando o Node como runtime JS). Ele fica aberto em processos permanentes (`ytdlp_worker.py`, ~1,2 s por música em vez de ~3 s abrindo um processo a cada vez), com a linha de comando como reserva se nenhum estiver livre ou se um cair. O `ytdl-core` (`@distube/ytdl-core`) foi removido: o repositório foi arquivado em ago/2025 e ele falhava sempre. **Atualização automática**: o YouTube muda o player com frequência e um yt-dlp parado para de funcionar. O servidor confere o PyPI 2 min depois de subir, a cada 6 h e logo após falhas (no máximo a cada 30 min); havendo versão nova, instala no volume `ytdlp` (com `nice`), testa resolvendo um vídeo e passa a usá-la nos processos permanentes e na linha de comando, sem reiniciar. O log mostra `[ytdlp] atualizado de X para Y`.
 - **Seek de verdade.** O proxy repassa `Range`/`Content-Range`, então a seekbar funciona sem baixar a faixa inteira.
 - **Mesma origem.** O nginx serve o app e faz proxy de `/api` (com `proxy_buffering off`), o que evita CORS no `<audio>` e permite que o `AnalyserNode` leia as amostras para o visualizador.
 - **Busca só no YouTube.** Havia também uma busca no catálogo MusicBrainz (gravação → vídeo casado por pontuação), removida porque trazia versões erradas com frequência; a ordem do próprio YouTube acerta mais.

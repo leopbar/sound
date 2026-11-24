@@ -20,8 +20,14 @@ services:
       retries: 10
 
   server:
-    build: ./server
+    build:
+      context: ./server
+      args:
+        # Vazio = a mais recente do PyPI. Depois o servidor se atualiza sozinho (volume ytdlp).
+        YTDLP_VERSION: ${YTDLP_VERSION:-}
     restart: unless-stopped
+    # tini como PID 1: recolhe processos órfãos (o node dos desafios do yt-dlp) em vez de zumbis.
+    init: true
     depends_on:
       db:
         condition: service_healthy
@@ -43,6 +49,8 @@ services:
       # Cookies do YouTube para o yt-dlp (YTDLP_COOKIES_FILE=/secrets/youtube-cookies.txt no .env).
       # Gravável: o yt-dlp atualiza os cookies que o YouTube renova. Fora do git.
       - ./secrets:/secrets
+      # Versões do yt-dlp instaladas pela atualização automática (services/ytdlpUpdate.js).
+      - ytdlp:/data/ytdlp
 
   libretranslate:
     image: libretranslate/libretranslate@sha256:cf85439147da3cf73fb525a303cfeb884946a9bc633083143bd771d6c6efb007
@@ -104,6 +112,7 @@ services:
       - caddy_config:/config
 
 volumes:
+  ytdlp:
   translation_models:
   pgdata:
   caddy_data:
