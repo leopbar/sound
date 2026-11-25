@@ -81,12 +81,16 @@ function keepOpen(response) {
   return response;
 }
 
-const MAX_AVAILABILITY_WAIT_MS = 10_000;
+const MAX_AVAILABILITY_WAIT_MS = 30_000;
 const AVAILABILITY_GRACE_MS = 3000;
 
 /**
- * URLs recentes do googlevideo têm um "available_at": pedidos anteriores recebem 403.
- * Espera até lá (com pequena margem), limitado a 10s para não prender a conexão.
+ * URLs recentes do googlevideo têm um "available_at": pedidos anteriores recebem 403. É o tempo do
+ * anúncio que o YouTube mostraria antes do vídeo (5 a 6 s na maioria das medições; uma vez, ~15 s),
+ * contado a partir do pedido do yt-dlp. Com a resolução rápida ele é
+ * o que mais pesa numa faixa nunca tocada; na pré-carga, passa antes do clique.
+ * Espera até lá (com pequena margem). Resolver de novo não adianta: viria outro anúncio. O limite
+ * de 30 s é só para não prender a conexão num valor absurdo.
  */
 async function waitUntilAvailable(entry) {
   const wait = entry.availableAt ? entry.availableAt + 300 - Date.now() : 0;
@@ -109,6 +113,8 @@ function getAudioSource(videoId, priority = 'high') {
   // Prefetch e play simultâneos compartilham a mesma resolução.
   if (!inflight.has(videoId)) {
     inflight.set(videoId, resolveSource(videoId, priority).finally(() => inflight.delete(videoId)));
+  } else if (priority === 'high') {
+    ytdlp.prioritize(videoId); // estava em pré-carga e alguém clicou: passa à frente
   }
   return inflight.get(videoId);
 }
@@ -119,8 +125,11 @@ async function resolveSource(videoId, priority) {
     entry = await ytdlp.resolveAudio(videoId, { priority });
   } catch (err) {
     const classified = toStreamError(err, videoId);
+    // Pré-carga que nem chegou a ser resolvida (fila cheia, processo reiniciando): nada a concluir.
+    if (err.low && err.unavailable) throw classified;
     if (!FATAL.has(classified.code)) ytdlp.suspectOutdated(`falha ${classified.code} em ${videoId}`);
-    if (err.via !== 'worker' || FATAL.has(classified.code)) throw classified;
+    // A pré-carga (`low`) não usa a linha de comando: ninguém está esperando por ela.
+    if (err.via !== 'worker' || err.low || FATAL.has(classified.code)) throw classified;
     // Reserva: o processo permanente errou onde a linha de comando pode acertar (estado velho dele).
     try {
       entry = await ytdlp.resolveAudio(videoId, { cli: true });
@@ -128,7 +137,7 @@ async function resolveSource(videoId, priority) {
       throw toStreamError(cliErr, videoId);
     }
     console.warn(`[stream] processo permanente do yt-dlp falhou para ${videoId} (${err.message}) e a linha de comando resolveu; reiniciando-o.`);
-    ytdlp.recycle();
+    ytdlp.recycle({ purge: true });
   }
 
   try {
@@ -189,7 +198,11 @@ async function streamYouTube(videoId, req, res, retry = true) {
   } catch (err) {
     invalidate();
     // URLs do googlevideo podem expirar ou ser negadas (403): re-resolve uma vez.
-    if (retry && [403, 410].includes(err.response?.status)) return streamYouTube(videoId, req, res, false);
+    const denied = [403, 410].includes(err.response?.status);
+    if (retry && denied) return streamYouTube(videoId, req, res, false);
+    // Negada duas vezes seguidas: a próxima resolução vai sem os players em cache do yt-dlp
+    // (uma negação só costuma ser o tempo do anúncio; duas pode ser cache ruim).
+    if (denied) ytdlp.purgePlayers();
     throw toStreamError(err, videoId);
   }
 
@@ -203,7 +216,8 @@ async function streamYouTube(videoId, req, res, retry = true) {
   }
 
   console.log(
-    `[stream] ${videoId} bytes=${start}-${end} src=${src || entry.via} resolve=${resolveMs}ms ` +
+    `[stream] ${videoId} bytes=${start}-${end} src=${src || entry.via} ` +
+      `resolve=${resolveMs}ms${src ? '' : ` queue=${entry.queuedMs || 0}ms`} ` +
       `wait=${waitMs}ms upstream=${upstreamMs}ms total=${Date.now() - t0}ms${retry ? '' : ' retry=1'}`
   );
   return pipeWithErrors(stream, req, res, videoId, invalidate);

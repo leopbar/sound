@@ -3,9 +3,15 @@
  * atualizado com frequência e resolve assinaturas/n-params usando o Node como runtime JS.
  *
  * Dois caminhos:
- *  - processos permanentes (ytdlp_worker.py; YTDLP_WORKERS, padrão 2): ~1,2 s por vídeo;
- *  - linha de comando, um processo por vídeo (~3 s, ~0,9 s só para o Python subir): reserva quando
- *    nenhum processo permanente está livre, quando ele cai ou trava, e com YTDLP_WORKERS=0.
+ *  - processos permanentes (ytdlp_worker.py; YTDLP_WORKERS, padrão 2): um vídeo por vez cada, com
+ *    o player do YouTube já analisado em cache (é o que deixa o desafio JS barato);
+ *  - linha de comando, um processo por vídeo, igual à do yt-dlp e bem mais lenta (analisa o
+ *    player inteiro a cada vídeo): reserva quando não há processo permanente, quando ele cai,
+ *    trava ou erra, e com YTDLP_WORKERS=0.
+ *
+ * Os pedidos aos processos permanentes passam por uma fila: clique na frente, pré-carga atrás
+ * (e a pré-carga sempre deixa um processo livre para o clique). A pré-carga nunca vai para a linha
+ * de comando: várias delas ao mesmo tempo disputavam a CPU com a música que a pessoa clicou.
  *
  * Os dois usam a mesma versão: a da imagem ou a instalada pela atualização automática
  * (ytdlpUpdate.js, via PYTHONPATH). Com a CPU disputada, o desafio JS do YouTube (node) pode levar
@@ -25,7 +31,12 @@ const POOL_SIZE = Number.isFinite(workersEnv) && workersEnv >= 0 ? Math.min(work
 const CLI_TIMEOUT_MS = 40_000;
 const WORKER_TIMEOUT_MS = 35_000;
 const WORKER_MAX_JOBS = 300; // recicla de tempos em tempos (a memória do yt-dlp cresce com o uso)
-const RESPAWN_MS = [1000, 5000, 30_000, 120_000]; // depois de quedas seguidas
+// Clique sem processo livre: espera um vagar (um vídeo leva poucos segundos) antes de apelar para
+// a linha de comando, que num servidor lento demora bem mais do que essa espera.
+const QUEUE_WAIT_MS = 20_000;
+const LOW_MAX_AGE_MS = 60_000; // pré-carga parada na fila há esse tempo já não interessa
+const LOW_QUEUE_MAX = 8; // pré-cargas na fila; passando disso, saem as mais antigas
+const RESPAWN_MS =[1000, 5000, 30_000, 120_000]; // depois de quedas seguidas
 const FORMAT = 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio';
 
 const watchUrl = (videoId) => `https://www.youtube.com/watch?v=${videoId}`;
@@ -127,12 +138,13 @@ class Worker {
     return this.ready && !this.dead && !this.retiring && !this.job;
   }
 
-  resolve(url) {
+  /** `fresh`: apaga os players do YouTube em cache antes de resolver (ver ytdlp_worker.py). */
+  resolve(url, fresh = false) {
     return new Promise((resolve, reject) => {
       const id = ++jobSeq;
       const timer = setTimeout(() => this.kill(`sem resposta em ${WORKER_TIMEOUT_MS / 1000} s`), WORKER_TIMEOUT_MS);
       this.job = { id, resolve, reject, timer };
-      this.proc.stdin.write(`${JSON.stringify({ id, url })}\n`);
+      this.proc.stdin.write(`${JSON.stringify({ id, url, fresh })}\n`);
     });
   }
 
@@ -147,8 +159,10 @@ class Worker {
       this.ready = true;
       if (msg.version && msg.version !== loggedVersion) {
         loggedVersion = msg.version;
-        console.log(`[ytdlp] processos permanentes com o yt-dlp ${msg.version}`);
+        const cache = msg.playerCache ? 'com' : 'SEM';
+        console.log(`[ytdlp] processos permanentes com o yt-dlp ${msg.version} (${cache} cache do player analisado)`);
       }
+      pump();
       return;
     }
     const { job } = this;
@@ -159,6 +173,7 @@ class Worker {
     if (this.retiring || ++this.jobs >= WORKER_MAX_JOBS) this.retire();
     if (msg.ok) job.resolve(msg.format);
     else job.reject(errorFrom(msg.error, msg.error || 'yt-dlp falhou'));
+    pump();
   }
 
   /** Encerra quando terminar o pedido em andamento; outro sobe no lugar. */
@@ -216,33 +231,152 @@ function scheduleRespawn() {
 async function start() {
   if (!(await isAvailable())) return;
   if (POOL_SIZE) spawnWorkers();
+  warmUp();
   // Versão nova instalada: troca os processos permanentes (a linha de comando já usa a nova).
-  update.schedule(() => recycle());
-}
-
-/** O processo permanente errou onde a linha de comando acertou: troca todos (estado velho). */
-function recycle() {
-  for (const w of workers) w.retire();
+  update.schedule(onNewVersion);
 }
 
 /**
- * Resolve a melhor faixa somente-áudio: { url, headers, mime, size, availableAt, via }.
- * `via`: 'worker' (processo permanente) ou 'cli' (linha de comando), também nos erros.
- * `priority: 'low'` (pré-carga) deixa um processo livre para quem clicou; `cli` força a reserva.
+ * Troca todos os processos permanentes. `purge`: o processo errou onde a linha de comando acertou;
+ * o próximo vídeo apaga também os players em cache (podem ser a causa).
  */
-async function resolveAudio(videoId, { priority = 'high', cli = false } = {}) {
-  const idle = cli ? [] : [...workers].filter((w) => w.idle);
-  const worker = priority === 'low' && POOL_SIZE > 1 ? idle.length > 1 && idle[0] : idle[0];
-  if (worker) {
+function recycle({ purge = false } = {}) {
+  if (purge) purgePlayers();
+  for (const w of workers) w.retire();
+}
+
+/** O próximo vídeo apaga os players do YouTube em cache antes de resolver (suspeita de cache ruim). */
+function purgePlayers() {
+  purgeNext = true;
+}
+
+/** Versão nova do yt-dlp: processos novos e o player já analisado antes do próximo clique. */
+function onNewVersion() {
+  recycle();
+  warmUp();
+}
+
+/**
+ * Resolve um vídeo qualquer para o player do YouTube ficar analisado em cache: sem isso, a primeira
+ * música depois de subir (ou de trocar de versão) pagaria a análise inteira.
+ */
+function warmUp() {
+  if (!POOL_SIZE) return;
+  const t0 = Date.now();
+  resolveAudio(update.TEST_VIDEO, { priority: 'low' }).then(
+    () => console.log(`[ytdlp] aquecimento: player do YouTube pronto em ${((Date.now() - t0) / 1000).toFixed(1)} s`),
+    (err) => console.warn(`[ytdlp] aquecimento falhou: ${err.message}`)
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Fila dos processos permanentes                                      */
+/* ------------------------------------------------------------------ */
+
+const queue = []; // esperando um processo: { videoId, priority, fresh, since, timer, resolve, reject }
+const pending = new Map(); // videoId → pedido (na fila ou em andamento), para o clique passar à frente
+let purgeNext = false;
+
+function unqueue(job) {
+  const i = queue.indexOf(job);
+  if (i >= 0) queue.splice(i, 1);
+  clearTimeout(job.timer);
+}
+
+/** Tira o pedido da fila sem resolver: o clique segue para a linha de comando; a pré-carga, não. */
+function giveUp(job, reason) {
+  unqueue(job);
+  job.reject(new WorkerUnavailable(reason));
+}
+
+function armTimer(job) {
+  clearTimeout(job.timer);
+  const ms = job.priority === 'high' ? QUEUE_WAIT_MS : LOW_MAX_AGE_MS;
+  job.timer = setTimeout(() => giveUp(job, `sem processo livre em ${ms / 1000} s`), ms);
+  job.timer.unref();
+}
+
+/** Entrega os pedidos da fila aos processos livres: cliques primeiro. */
+function pump() {
+  while (queue.length) {
+    const idle = [...workers].filter((w) => w.idle);
+    if (!idle.length) return;
+    let i = queue.findIndex((j) => j.priority === 'high');
+    if (i < 0) {
+      // Só pré-cargas na fila: sempre fica um processo livre para quem clicar.
+      if (POOL_SIZE > 1 && idle.length < 2) return;
+      i = 0;
+    }
+    const job = queue[i];
+    unqueue(job);
+    const fresh = job.fresh || purgeNext;
+    purgeNext = false;
+    const queuedMs = Date.now() - job.since;
+    idle[0].resolve(watchUrl(job.videoId), fresh).then((format) => job.resolve({ format, queuedMs }), job.reject);
+  }
+}
+
+/** Resolve num processo permanente; rejeita com WorkerUnavailable se não houver como. */
+function viaWorker(videoId, priority, fresh) {
+  const job = { videoId, priority, fresh, since: Date.now(), timer: null };
+  const promise = new Promise((resolve, reject) => {
+    job.resolve = resolve;
+    job.reject = reject;
+  });
+  pending.set(videoId, job);
+  if (priority === 'high' && !workers.size) {
+    // Nenhum processo de pé (caiu e ainda não voltou): o clique não espera.
+    job.reject(new WorkerUnavailable('nenhum processo permanente'));
+  } else {
+    queue.push(job);
+    armTimer(job);
+    const low = queue.filter((j) => j.priority === 'low');
+    for (const old of low.slice(0, Math.max(0, low.length - LOW_QUEUE_MAX))) giveUp(old, 'pré-cargas demais na fila');
+    pump();
+  }
+  return promise
+    .finally(() => {
+      if (pending.get(videoId) === job) pending.delete(videoId);
+    })
+    .catch((err) => {
+      // A prioridade no momento da falha: a pré-carga pode ter virado clique no caminho.
+      throw Object.assign(err, { low: job.priority === 'low' });
+    });
+}
+
+/** Alguém clicou numa faixa que estava em pré-carga: ela passa para a frente da fila. */
+function prioritize(videoId) {
+  const job = pending.get(videoId);
+  if (!job || job.priority === 'high') return;
+  job.priority = 'high';
+  if (queue.includes(job)) {
+    armTimer(job);
+    pump();
+  }
+}
+
+/**
+ * Resolve a melhor faixa somente-áudio: { url, headers, mime, size, availableAt, via, queuedMs }.
+ * `via`: 'worker' (processo permanente) ou 'cli' (linha de comando), também nos erros.
+ * `priority: 'low'` (pré-carga): espera a vez na fila e nunca usa a linha de comando (o erro leva
+ * `low: true`, e `unavailable: true` se nem chegou a ser resolvida). `cli` força a linha de
+ * comando. `fresh`: apaga antes os players em cache.
+ */
+async function resolveAudio(videoId, { priority = 'high', cli = false, fresh = false } = {}) {
+  if (!cli && POOL_SIZE) {
     try {
-      return { ...toSource(await worker.resolve(watchUrl(videoId))), via: 'worker' };
+      const { format, queuedMs } = await viaWorker(videoId, priority, fresh);
+      return { ...toSource(format), via: 'worker', queuedMs };
     } catch (err) {
-      if (!(err instanceof WorkerUnavailable)) throw Object.assign(err, { via: 'worker' });
-      // Caiu ou travou no meio: segue para a linha de comando.
+      // Erro do vídeo ou do yt-dlp, ou pré-carga que ficou sem processo (`unavailable`): quem
+      // chamou decide.
+      const unavailable = err instanceof WorkerUnavailable;
+      if (!unavailable || err.low) throw Object.assign(err, { via: 'worker', unavailable });
+      // Clique, e o processo caiu, travou ou não vagou a tempo: segue para a linha de comando.
     }
   }
   try {
-    return { ...toSource(await resolveWithCli(videoId)), via: 'cli' };
+    return { ...toSource(await resolveWithCli(videoId)), via: 'cli', queuedMs: 0 };
   } catch (err) {
     throw Object.assign(err, { via: 'cli' });
   }
@@ -253,4 +387,4 @@ function suspectOutdated(reason) {
   update.checkSoon(reason);
 }
 
-module.exports = { isAvailable, start, recycle, resolveAudio, suspectOutdated };
+module.exports = { isAvailable, start, recycle, purgePlayers, resolveAudio, prioritize, suspectOutdated };

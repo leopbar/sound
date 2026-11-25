@@ -273,4 +273,4 @@ function schedule(activate) {
   timer.unref();
 }
 
-module.exports = { init, schedule, check, checkSoon, env, exec, activeVersion, compareVersions };
+module.exports = { init, schedule, check, checkSoon, env, exec, activeVersion, compareVersions, TEST_VIDEO };

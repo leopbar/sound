@@ -167,6 +167,7 @@ docker compose -f docker-compose.dev.yml up
 | `JAMENDO_CLIENT_ID` | Opcional. Necessário só para tocar faixas do Jamendo já salvas em playlists. |
 | `YTDLP_COOKIES_FILE` | Opcional. Arquivo de cookies (formato Netscape) caso o YouTube exija verificação anti-bot. |
 | `YTDLP_WORKERS` | Opcional. Processos permanentes do yt-dlp (padrão 2; `0` = só a linha de comando). |
+| `YTDLP_PLAYER_CACHE` | Opcional. `0` desliga o cache do player do YouTube já analisado (padrão: ligado; sem ele cada música refaz a análise, bem mais lenta em servidor com pouca CPU). |
 | `YTDLP_AUTO_UPDATE` | Opcional. `0` desliga a atualização automática do yt-dlp (padrão: ligada). |
 | `YTDLP_UPDATE_HOURS` | Opcional. Intervalo, em horas, entre as conferências de versão nova do yt-dlp (padrão 6). |
 
