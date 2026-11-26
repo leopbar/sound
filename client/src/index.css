@@ -24,3 +24,56 @@
   .range:hover::-webkit-slider-thumb, .range:focus-visible::-webkit-slider-thumb { @apply opacity-100; }
   .range:hover::-moz-range-thumb, .range:focus-visible::-moz-range-thumb { @apply opacity-100; }
 }
+
+/*
+ * Bonequinho impaciente do aviso de carregamento (components/LoadingNotice.jsx).
+ * `data-mood`: 0 esperando, 1 irritado, 2 bravo (veia), 3 furioso (fumaça), 4 dormiu.
+ * transform-origin em px = unidades do viewBox (64×72).
+ */
+.waiter-foot { transform-origin: 35px 68px; animation: waiter-tap 0.75s ease-in-out infinite; }
+.waiter[data-mood='1'] .waiter-foot { animation-duration: 0.48s; }
+.waiter[data-mood='2'] .waiter-foot { animation-duration: 0.32s; }
+.waiter[data-mood='3'] .waiter-foot { animation-duration: 0.22s; }
+.waiter[data-mood='4'] .waiter-foot { animation: none; }
+
+.waiter-body { transform-origin: 32px 55px; animation: waiter-sigh 2.6s ease-in-out infinite; }
+.waiter[data-mood='3'] .waiter-all { animation: waiter-shake 0.14s linear infinite; }
+
+.waiter-face { fill: #fcd9b6; transition: fill 1.2s; }
+.waiter[data-mood='2'] .waiter-face { fill: #fdb9a0; }
+.waiter[data-mood='3'] .waiter-face { fill: #f98b7c; }
+
+.waiter-brow-l, .waiter-brow-r { transition: transform 0.4s; }
+.waiter-brow-l { transform-origin: 25.5px 12.5px; }
+.waiter-brow-r { transform-origin: 38.5px 12.5px; }
+.waiter[data-mood='1'] .waiter-brow-l { transform: rotate(14deg); }
+.waiter[data-mood='1'] .waiter-brow-r { transform: rotate(-14deg); }
+.waiter[data-mood='2'] .waiter-brow-l, .waiter[data-mood='3'] .waiter-brow-l { transform: translateY(1px) rotate(26deg); }
+.waiter[data-mood='2'] .waiter-brow-r, .waiter[data-mood='3'] .waiter-brow-r { transform: translateY(1px) rotate(-26deg); }
+
+.waiter-pupils { animation: waiter-eyes 3.2s ease-in-out infinite; }
+.waiter-asleep, .waiter[data-mood='4'] .waiter-awake { display: none; }
+.waiter[data-mood='4'] .waiter-asleep { display: inline; }
+
+.waiter-vein { opacity: 0; transform-origin: 50px 5px; }
+.waiter[data-mood='2'] .waiter-vein, .waiter[data-mood='3'] .waiter-vein { opacity: 1; animation: waiter-vein 0.6s ease-in-out infinite; }
+
+.waiter-steam, .waiter-z { opacity: 0; }
+.waiter-steam { transform-origin: 32px 15px; }
+.waiter[data-mood='3'] .waiter-steam { animation: waiter-steam 0.9s ease-out infinite; }
+.waiter[data-mood='3'] .waiter-steam-2 { animation-delay: 0.45s; }
+.waiter[data-mood='4'] .waiter-z { animation: waiter-z 2s ease-out infinite; }
+.waiter[data-mood='4'] .waiter-z-2 { animation-delay: 1s; }
+
+@keyframes waiter-tap { 0%, 55%, 100% { transform: rotate(0deg); } 28% { transform: rotate(-26deg); } }
+@keyframes waiter-sigh { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.965); } }
+@keyframes waiter-shake { 0%, 100% { transform: translateX(-0.7px); } 50% { transform: translateX(0.7px); } }
+@keyframes waiter-eyes { 0%, 62%, 100% { transform: translate(0, 0); } 70%, 92% { transform: translate(1.8px, -1px); } }
+@keyframes waiter-vein { 0%, 100% { transform: scale(0.8); } 50% { transform: scale(1.2); } }
+@keyframes waiter-steam { 0% { opacity: 0; transform: translateY(0); } 25% { opacity: 0.9; } 100% { opacity: 0; transform: translateY(-11px); } }
+@keyframes waiter-z { 0% { opacity: 0; transform: translate(-3px, 4px); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(3px, -6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .waiter *, .waiter[data-mood] * { animation: none !important; transition: none !important; }
+  .waiter[data-mood='4'] .waiter-z { opacity: 1; }
+}

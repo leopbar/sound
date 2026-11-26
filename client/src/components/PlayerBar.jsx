@@ -7,6 +7,7 @@ import Artwork from './Artwork';
 import Visualizer from './Visualizer';
 import LyricsPanel from './LyricsPanel';
 import AddToPlaylist from './AddToPlaylist';
+import LoadingNotice from './LoadingNotice';
 import { PlayIcon, PauseIcon, NextIcon, PrevIcon, VolumeIcon, LyricsIcon, DancerIcon, Spinner } from './Icons';
 
 function Seekbar() {
@@ -89,41 +90,6 @@ function Notice() {
   return (
     <div role="status" className="absolute -top-14 left-1/2 max-w-[90vw] -translate-x-1/2 truncate rounded-lg bg-zinc-100 px-4 py-2 text-sm text-zinc-900 shadow-xl">
       {notice.text}
-    </div>
-  );
-}
-
-const LOADING_NOTICE_AFTER_S = 1; // faixa já pronta no servidor ou no aparelho começa antes disso
-const LOADING_USUAL_MAX_S = 20;
-
-/**
- * Enquanto a faixa carrega: aviso com os segundos passando (uma faixa nunca tocada pode levar até
- * ~20 s: o servidor resolve o vídeo e espera o YouTube liberar o áudio). A contagem recomeça ao
- * trocar de faixa. Só informa: `pointer-events-none`, os cliques passam para o que está atrás.
- */
-function LoadingNotice() {
-  const loading = usePlayerStore((s) => s.status === 'loading');
-  const trackId = usePlayerStore((s) => s.queue[s.index]?.id);
-  const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    setSeconds(0);
-    if (!loading) return;
-    const t0 = Date.now();
-    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - t0) / 1000)), 250);
-    return () => clearInterval(timer);
-  }, [loading, trackId]);
-  if (!loading || seconds < LOADING_NOTICE_AFTER_S) return null;
-  return (
-    <div
-      role="status"
-      className="pointer-events-none absolute -top-14 left-1/2 flex max-w-[90vw] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-lg bg-zinc-100 px-4 py-2 text-sm text-zinc-900 shadow-xl"
-    >
-      <span className="truncate">
-        {seconds <= LOADING_USUAL_MAX_S ? `Carregando música… pode levar até ${LOADING_USUAL_MAX_S} s` : 'Ainda carregando a música…'}
-      </span>
-      <span aria-hidden="true" className="shrink-0 font-semibold tabular-nums">
-        {seconds} s
-      </span>
     </div>
   );
 }
